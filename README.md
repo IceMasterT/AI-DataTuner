@@ -21,6 +21,87 @@ AI Data Pipeline takes your raw documents (PDF, CSV, JSON, TXT, Markdown) and co
 Raw Documents → Phase 1 (Sanitize/Clean) → Phase 2 (Chunk) → Phase 3 (Personality + Format) → Phase 4 (Quality Check) → Training Data
 ```
 
+```mermaid
+flowchart TD
+    A[Start Operator Runbook] --> B[Open terminal]
+    B --> C["cd /media/artiq/DATA/AI Data Pipeline/backup_cleanup/python_files"]
+    C --> D["./go_live.sh --check-only"]
+    D --> E{Check-only passed?}
+
+    E -- No --> F[Stop<br/>Do not run production]
+    E -- Yes --> G["./go_live.sh"]
+
+    G --> H[Pick provider mode]
+
+    H --> I[Free local mode<br/>OPENAI_PROVIDER=ollama<br/>OLLAMA_BASE_URL=http://127.0.0.1:11434/v1<br/>OPENAI_MODEL=qwen2.5:7b]
+    H --> J[OpenAI cloud mode<br/>OPENAI_PROVIDER=openai<br/>OPENAI_API_KEY=REAL_KEY<br/>OPENAI_MODEL=gpt-4o]
+    H --> K[OpenRouter cloud mode<br/>OPENAI_PROVIDER=openrouter<br/>OPENROUTER_API_KEY=REAL_KEY<br/>OPENROUTER_BASE_URL=https://openrouter.ai/api/v1<br/>OPENAI_MODEL=openrouter/auto]
+    H --> L[LM Studio local mode<br/>OPENAI_PROVIDER=lmstudio<br/>LMSTUDIO_BASE_URL=http://127.0.0.1:1234/v1<br/>OPENAI_MODEL=local-model]
+
+    I --> M[Use default phase chain]
+    J --> M
+    K --> M
+    L --> M
+
+    M --> N[input]
+    N --> O[Phase 1]
+    O --> P[Phase 2]
+    P --> Q[Phase 3]
+    Q --> R[Phase 4]
+
+    R --> S[Common GUI workflow]
+    S --> S1[Open app]
+    S1 --> S2[AI Settings: choose provider preset]
+    S2 --> S3[Processing: choose output format]
+    S3 --> S4[Use GPT JSONL for ChatGPT fine-tuning]
+    S4 --> S5[Phases: verify required phases enabled]
+    S5 --> S6[Start pipeline]
+
+    S6 --> T{Need ChatGPT fine-tuning output?}
+    T -- Yes --> U[Set Phase 3 target to openai or gpt_jsonl]
+    U --> V["Record format:<br/>{messages:[{role:user,content:...},{role:assistant,content:...}]}"]
+    V --> W[Combined dataset file: chatgpt_training.jsonl]
+    T -- No --> X[Continue normal processing]
+
+    W --> Y[Run health checks if needed]
+    X --> Y
+
+    Y --> Y1["./run_pipeline.sh --health-only --smoke"]
+    Y --> Y2["./run_pipeline.sh --health-only --smoke --strict"]
+    Y2 --> Z{Strict health check passed?}
+
+    Z -- Yes --> AA[Production gate passed]
+    Z -- No --> AB[Failure response]
+
+    AB --> AB1{Failure type}
+    AB1 -- Creds --> AB2[Verify provider env vars and real keys]
+    AB1 -- Deps --> AB3["Run: python3 setup.py --install-type full --yes"]
+    AB1 -- Local provider --> AB4[Confirm Ollama or LM Studio is running and endpoint is reachable]
+
+    AA --> AC[Apply security rules]
+    AB2 --> AC
+    AB3 --> AC
+    AB4 --> AC
+
+    AC --> AC1[Never place real keys in tracked files]
+    AC1 --> AC2[Use environment variables only]
+    AC2 --> AC3[Rotate keys immediately if exposed]
+
+    AC3 --> AD[Optional launcher shortcuts]
+    AD --> AD1["python3 install_app.py"]
+    AD --> AD2[Linux desktop icon: ~/Desktop/AI Data Pipeline.desktop]
+    AD --> AD3[Linux command: ~/.local/bin/ai-data-pipeline-launcher]
+    AD --> AD4[Windows scripts: backup_cleanup/python_files/run_pipeline.bat]
+    AD --> AD5[iOS guide: backup_cleanup/python_files/launchers/ios/IOS_LAUNCHER_SETUP.md]
+
+    F --> AE[End]
+    AD1 --> AE
+    AD2 --> AE
+    AD3 --> AE
+    AD4 --> AE
+    AD5 --> AE
+```
+
 ---
 
 ## Installation
