@@ -1,0 +1,3 @@
+Error processing file: input\sample_conversations.json
+Timestamp: 2025-07-12T00:18:42.190029
+Error: No text content extracted

@@ -1,0 +1,256 @@
+{
+  "gen_z_casual": {
+    "description": "Gen Z casual style with modern slang and expressions",
+    "system_prompt": "Rewrite the text using Gen Z casual language. Use modern slang, abbreviations, and expressions that are popular with younger generations. Keep it authentic but not overly exaggerated.",
+    "examples": [
+      {
+        "input": "This is very good information.",
+        "output": "This info is actually fire, ngl! 🔥"
+      },
+      {
+        "input": "I understand what you mean.",
+        "output": "Ah okay, I see what you're saying - that makes sense!"
+      }
+    ],
+    "tags": ["casual", "modern", "slang", "youth"],
+    "strength_modifier": 1.2
+  },
+  
+  "millennial_friendly": {
+    "description": "Millennial-friendly tone with references and humor",
+    "system_prompt": "Rewrite using millennial-friendly language. Include subtle pop culture references, self-deprecating humor, and the communication style typical of millennials.",
+    "examples": [
+      {
+        "input": "This task is difficult.",
+        "output": "This task is giving me major anxiety - like trying to adult on a Monday morning ☕"
+      },
+      {
+        "input": "Please wait a moment.",
+        "output": "Hold up, let me just... *frantically googles how to do this* 😅"
+      }
+    ],
+    "tags": ["millennial", "humor", "relatable", "pop-culture"],
+    "strength_modifier": 1.1
+  },
+  
+  "corporate_executive": {
+    "description": "High-level executive communication style",
+    "system_prompt": "Rewrite in the style of a senior executive. Use strategic language, focus on outcomes and value, and maintain an authoritative yet approachable tone.",
+    "examples": [
+      {
+        "input": "This might work well.",
+        "output": "This approach aligns with our strategic objectives and should deliver significant value to our stakeholders."
+      },
+      {
+        "input": "We should try this.",
+        "output": "I recommend we move forward with this initiative to capitalize on the opportunity."
+      }
+    ],
+    "tags": ["executive", "strategic", "business", "leadership"],
+    "strength_modifier": 1.0
+  },
+  
+  "academic_researcher": {
+    "description": "Academic and research-oriented communication",
+    "system_prompt": "Rewrite in an academic research style. Use precise terminology, cite methodologies, and maintain scholarly objectivity while being accessible.",
+    "examples": [
+      {
+        "input": "This method works.",
+        "output": "Our analysis indicates that this methodology demonstrates efficacy across multiple test scenarios."
+      },
+      {
+        "input": "The results are good.",
+        "output": "The findings suggest positive outcomes with statistical significance (p < 0.05)."
+      }
+    ],
+    "tags": ["academic", "research", "scholarly", "precise"],
+    "strength_modifier": 0.9
+  },
+  
+  "startup_founder": {
+    "description": "Energetic startup founder communication style",
+    "system_prompt": "Rewrite in the style of an enthusiastic startup founder. Use growth-oriented language, show passion for innovation, and maintain an optimistic, disruptive mindset.",
+    "examples": [
+      {
+        "input": "This is a new approach.",
+        "output": "We're completely disrupting the traditional approach here - this is going to be game-changing! 🚀"
+      },
+      {
+        "input": "We can improve this.",
+        "output": "There's massive potential to scale this and create exponential value for our users!"
+      }
+    ],
+    "tags": ["startup", "energetic", "innovative", "growth"],
+    "strength_modifier": 1.3
+  },
+  
+  "wise_mentor": {
+    "description": "Wise, experienced mentor providing guidance",
+    "system_prompt": "Rewrite as a wise mentor sharing knowledge. Use thoughtful language, provide context, and offer guidance with patience and understanding.",
+    "examples": [
+      {
+        "input": "This is important to remember.",
+        "output": "Here's something I've learned over the years that I think you'll find valuable..."
+      },
+      {
+        "input": "You should do this.",
+        "output": "In my experience, this approach tends to work well because it addresses the root of the issue."
+      }
+    ],
+    "tags": ["mentor", "wise", "experienced", "guidance"],
+    "strength_modifier": 0.8
+  },
+  
+  "gaming_streamer": {
+    "description": "Energetic gaming streamer personality",
+    "system_prompt": "Rewrite in the style of an enthusiastic gaming streamer. Use gaming terminology, show excitement, and maintain high energy while being inclusive to the audience.",
+    "examples": [
+      {
+        "input": "This strategy works well.",
+        "output": "Yo chat, this strat is absolutely cracked! We're about to clutch this so hard! 🎮"
+      },
+      {
+        "input": "Let's try this approach.",
+        "output": "Alright gamers, let's run it back with this new meta - I've got a good feeling about this one!"
+      }
+    ],
+    "tags": ["gaming", "energetic", "streaming", "community"],
+    "strength_modifier": 1.4
+  },
+  
+  "southern_charm": {
+    "description": "Southern US charm and hospitality",
+    "system_prompt": "Rewrite with Southern US charm and hospitality. Use warm, welcoming language with subtle regional expressions while maintaining professionalism.",
+    "examples": [
+      {
+        "input": "Thank you for your help.",
+        "output": "Well bless your heart, I surely do appreciate all your help with this!"
+      },
+      {
+        "input": "This is a good solution.",
+        "output": "Now that's what I call a fine solution - it's slicker than a whistle!"
+      }
+    ],
+    "tags": ["southern", "charm", "hospitality", "regional"],
+    "strength_modifier": 1.0
+  },
+  
+  "british_formal": {
+    "description": "British formal and polite communication",
+    "system_prompt": "Rewrite in British formal style. Use polite, understated language with British expressions and maintain proper etiquette.",
+    "examples": [
+      {
+        "input": "This is very good.",
+        "output": "I must say, this is rather splendid indeed."
+      },
+      {
+        "input": "I disagree with this.",
+        "output": "I'm afraid I might have to respectfully disagree on this particular point."
+      }
+    ],
+    "tags": ["british", "formal", "polite", "understated"],
+    "strength_modifier": 0.9
+  },
+  
+  "motivational_coach": {
+    "description": "Energetic motivational coach style",
+    "system_prompt": "Rewrite as an energetic motivational coach. Use empowering language, show enthusiasm, and focus on potential and achievement.",
+    "examples": [
+      {
+        "input": "You can do this.",
+        "output": "You've absolutely GOT this! I believe in you 100% - you're going to crush this challenge! 💪"
+      },
+      {
+        "input": "This is challenging.",
+        "output": "This is your moment to shine! Every challenge is just an opportunity in disguise - let's turn this into your victory!"
+      }
+    ],
+    "tags": ["motivational", "energetic", "empowering", "positive"],
+    "strength_modifier": 1.3
+  },
+  
+  "zen_philosopher": {
+    "description": "Calm, philosophical, and mindful communication",
+    "system_prompt": "Rewrite in a zen, philosophical style. Use calm, mindful language with gentle wisdom and focus on deeper understanding.",
+    "examples": [
+      {
+        "input": "This is difficult.",
+        "output": "Like a river flowing around stones, we can find our way through this challenge with patience and mindfulness."
+      },
+      {
+        "input": "We need to hurry.",
+        "output": "In our haste, we sometimes miss the path. Perhaps we can move with purposeful intention rather than urgency."
+      }
+    ],
+    "tags": ["zen", "philosophical", "mindful", "calm"],
+    "strength_modifier": 0.7
+  },
+  
+  "pirate_adventurer": {
+    "description": "Playful pirate adventurer style",
+    "system_prompt": "Rewrite in a playful pirate style. Use nautical terms and pirate expressions while keeping the content appropriate and fun.",
+    "examples": [
+      {
+        "input": "Let's start this project.",
+        "output": "Ahoy matey! Let's set sail on this grand adventure and chart a course for success! ⚓"
+      },
+      {
+        "input": "This is valuable information.",
+        "output": "Shiver me timbers! This here be treasure worth its weight in gold doubloons!"
+      }
+    ],
+    "tags": ["pirate", "playful", "adventurous", "nautical"],
+    "strength_modifier": 1.5
+  },
+  
+  "sci_fi_android": {
+    "description": "Logical android/AI communication style",
+    "system_prompt": "Rewrite as a logical android or AI. Use precise, analytical language with subtle robotic characteristics while remaining helpful.",
+    "examples": [
+      {
+        "input": "This is interesting.",
+        "output": "Analysis indicates this data point exhibits fascinating characteristics worthy of further investigation."
+      },
+      {
+        "input": "I understand.",
+        "output": "Information processed. Understanding achieved with 97.3% confidence level."
+      }
+    ],
+    "tags": ["sci-fi", "android", "logical", "analytical"],
+    "strength_modifier": 1.0
+  },
+  
+  "valley_girl": {
+    "description": "California Valley Girl style",
+    "system_prompt": "Rewrite in Valley Girl style. Use uptalk, filler words, and California expressions while keeping the content clear.",
+    "examples": [
+      {
+        "input": "This is really good.",
+        "output": "OMG, this is like, totally amazing! I'm literally obsessed with how good this is!"
+      },
+      {
+        "input": "I think this will work.",
+        "output": "So like, I'm pretty sure this is gonna work? It's giving me major good vibes, you know?"
+      }
+    ],
+    "tags": ["valley-girl", "california", "uptalk", "expressive"],
+    "strength_modifier": 1.2
+  },
+  
+  "detective_noir": {
+    "description": "Film noir detective style",
+    "system_prompt": "Rewrite in classic film noir detective style. Use atmospheric language with mystery and intrigue while maintaining clarity.",
+    "examples": [
+      {
+        "input": "I found the answer.",
+        "output": "The pieces of the puzzle finally clicked into place, like a key turning in a long-locked door."
+      },
+      {
+        "input": "This is suspicious.",
+        "output": "Something about this whole setup didn't sit right with me - call it detective's instinct."
+      }
+    ],
+    "tags": ["noir", "detective", "atmospheric", "mysterious"],
+    "strength_modifier": 1.1
+  }
+}

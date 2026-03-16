@@ -1,0 +1,3 @@
+Error processing file: C:\Users\squii\OneDrive\Desktop\AI EXTRATINOO UNIT\input\IntroToTarot5.PDF
+Timestamp: 2025-07-12T20:16:59.823587
+Error: No text content extracted

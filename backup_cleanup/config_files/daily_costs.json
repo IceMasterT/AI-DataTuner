@@ -1,0 +1,19 @@
+{
+  "2025-07-11": {
+    "total_cost": 0.19999999999999998,
+    "total_tokens": 425,
+    "requests": 3,
+    "models": {
+      "gpt-4o-mini": {
+        "cost": 0.08,
+        "tokens": 175,
+        "requests": 2
+      },
+      "gpt-4o": {
+        "cost": 0.12,
+        "tokens": 250,
+        "requests": 1
+      }
+    }
+  }
+}

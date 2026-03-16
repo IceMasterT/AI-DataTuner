@@ -1,0 +1,20 @@
+{
+  "openai_api_key": "",
+  "openai_model": "gpt-4o",
+  "daily_cost_limit": 20.0,
+  "enable_ai_classification": true,
+  "enable_content_enhancement": true,
+  "enable_personality_modifier": true,
+  "enable_security_filtering": true,
+  "security_level": "balanced",
+  "input_folder": "/media/artiq/DATA/AI Data Pipeline/input",
+  "filtered_folder": "/media/artiq/DATA/AI Data Pipeline/Phase 1",
+  "output_folder": "/media/artiq/DATA/AI Data Pipeline/Phase 4",
+  "output_format": "qwen",
+  "parallel_processing": true,
+  "max_workers": 4,
+  "auto_move_files": true,
+  "personality_template": "neutral",
+  "custom_personality": "",
+  "personality_strength": 0.7
+}

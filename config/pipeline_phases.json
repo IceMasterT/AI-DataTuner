@@ -1,0 +1,89 @@
+{
+  "phase1_sanitization": {
+    "name": "Input Parsing & Sanitization",
+    "description": "Parse files and sanitize data for safe processing",
+    "status": "PhaseStatus.ENABLED",
+    "input_folder": "/media/artiq/DATA/AI Data Pipeline/input",
+    "output_folder": "/media/artiq/DATA/AI Data Pipeline/Phase 1",
+    "settings": {
+      "supported_formats": [
+        "pdf",
+        "csv",
+        "json",
+        "jsonl",
+        "txt",
+        "md"
+      ],
+      "security_level": "balanced",
+      "unicode_normalization": true,
+      "remove_markup": true,
+      "filter_code": true,
+      "remove_tables": false,
+      "max_clean_file_size_mb": 2.0,
+      "size_cap_strategy": "split",
+      "preserve_sentence_boundaries": true,
+      "compression_mode": "none",
+      "on_cap_exceeded": "warn",
+      "recursive_input_scan": false,
+      "min_clean_chars": 1,
+      "drop_empty_outputs": true,
+      "finetune_safe_cleaning": true,
+      "unicode_normalization_form": "NFKC",
+      "max_consecutive_blank_lines": 2,
+      "size_cap_unit": "mb"
+    }
+  },
+  "phase2_chunking": {
+    "name": "Chunking & Fact Extraction",
+    "description": "Divide text into manageable, coherent chunks",
+    "status": "PhaseStatus.DISABLED",
+    "input_folder": "/media/artiq/DATA/AI Data Pipeline/Phase 1",
+    "output_folder": "/media/artiq/DATA/AI Data Pipeline/Phase 2",
+    "settings": {
+      "chunk_size": "1-2_sentences",
+      "token_overlap": 1,
+      "max_chunk_tokens": 150,
+      "preserve_context": true,
+      "fact_extraction": true,
+      "create_subfolders": true
+    }
+  },
+  "phase3_personality": {
+    "name": "Personality Prompting & Formatting",
+    "description": "Transform chunks with personality-driven prompting",
+    "status": "PhaseStatus.DISABLED",
+    "input_folder": "/media/artiq/DATA/AI Data Pipeline/Phase 2",
+    "output_folder": "/media/artiq/DATA/AI Data Pipeline/Phase 3",
+    "settings": {
+      "personality_template": "professional",
+      "personality_strength": 0.7,
+      "maintain_factual_accuracy": true,
+      "format_validation": true,
+      "output_format": "qwen",
+      "batch_size": 10,
+      "training_target": "qwen",
+      "strict_role_validation": true,
+      "emit_combined_jsonl": true,
+      "combined_jsonl_filename": "chatgpt_training.jsonl"
+    }
+  },
+  "phase4_quality": {
+    "name": "Quality Scoring & Assessment",
+    "description": "LLM-powered quality evaluation and scoring",
+    "status": "PhaseStatus.DISABLED",
+    "input_folder": "/media/artiq/DATA/AI Data Pipeline/Phase 3",
+    "output_folder": "/media/artiq/DATA/AI Data Pipeline/Phase 4",
+    "settings": {
+      "scoring_model": "gpt-4o",
+      "quality_metrics": [
+        "accuracy",
+        "fluency",
+        "personality_depth"
+      ],
+      "score_scale": 100,
+      "sample_percentage": 10,
+      "generate_report": true,
+      "auto_download": false
+    }
+  }
+}
