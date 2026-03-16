@@ -139,7 +139,9 @@ After installation, you have several options:
 cd /path/to/AI-Data-Pipeline/backup_cleanup/python_files
 ./go_live.sh
 ```
-
+---
+**Gist RUNBOOK.md (also in root)**
+[Gist Runbook and Operation Guide](https://gist.github.com/IceMasterT/281c0f2e008d25d21d3798b07fefb0f9)
 ---
 
 ## Quick Start Guide
