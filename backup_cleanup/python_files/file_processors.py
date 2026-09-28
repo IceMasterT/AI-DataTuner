@@ -15,89 +15,87 @@ from pipeline_orchestrator import FileProcessor, PipelineConfig
 
 
 class PDFProcessor(FileProcessor):
-    """Processor for PDF files."""
+    """Processor for PDF files with position-aware structure extraction and furniture cleaning."""
     
     def can_process(self, file_path: Path) -> bool:
         return file_path.suffix.lower() == '.pdf'
     
     def extract_text_segments(self, file_path: Path) -> List[str]:
-        """Extract text segments from PDF."""
+        """Extract structure-preserved text segments from PDF."""
         try:
-            # Try to import PDF processing library
+            from document_structure_extractor import DocumentStructureExtractor
+            from furniture_cleaner import FurnitureCleaner
+
+            extractor = DocumentStructureExtractor()
+            doc = extractor.extract_document(file_path)
+            
+            cleaner = FurnitureCleaner()
+            cleaned = cleaner.clean_document(doc)
+
+            segments = [b.text for b in cleaned.cleaned_blocks if b.text.strip()]
+            if segments:
+                return segments
+        except Exception as e:
+            self.logger.warning(f"Structured PDF extraction failed, falling back: {e}")
+
+        # Fallback to PyPDF2 or pdfplumber if structured extraction unavailable
+        try:
             try:
-                import PyPDF2
-                return self._extract_with_pypdf2(file_path)
+                import pymupdf
+                return self._extract_with_pymupdf(file_path)
             except ImportError:
                 try:
                     import pdfplumber
                     return self._extract_with_pdfplumber(file_path)
                 except ImportError:
-                    self.logger.warning("No PDF library available. Install PyPDF2 or pdfplumber.")
-                    return []
-        
+                    import PyPDF2
+                    return self._extract_with_pypdf2(file_path)
         except Exception as e:
             self.logger.error(f"Error processing PDF {file_path}: {e}")
             return []
     
+    def _extract_with_pymupdf(self, file_path: Path) -> List[str]:
+        """Extract text using PyMuPDF."""
+        import pymupdf
+        segments = []
+        with pymupdf.open(str(file_path)) as doc:
+            for page in doc:
+                text = page.get_text("text")
+                if text.strip():
+                    paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]
+                    segments.extend(paragraphs)
+        return segments
+
     def _extract_with_pypdf2(self, file_path: Path) -> List[str]:
         """Extract text using PyPDF2."""
         import PyPDF2
-        
         segments = []
-        
         with open(file_path, 'rb') as file:
             pdf_reader = PyPDF2.PdfReader(file)
-            
             for page_num, page in enumerate(pdf_reader.pages):
                 try:
                     text = page.extract_text()
                     if text.strip():
-                        # Split into paragraphs
-                        paragraphs = self._split_into_paragraphs(text)
+                        paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]
                         segments.extend(paragraphs)
-                
                 except Exception as e:
                     self.logger.warning(f"Error extracting page {page_num}: {e}")
-        
         return segments
     
     def _extract_with_pdfplumber(self, file_path: Path) -> List[str]:
         """Extract text using pdfplumber."""
         import pdfplumber
-        
         segments = []
-        
         with pdfplumber.open(file_path) as pdf:
             for page_num, page in enumerate(pdf.pages):
                 try:
                     text = page.extract_text()
                     if text and text.strip():
-                        # Split into paragraphs
-                        paragraphs = self._split_into_paragraphs(text)
+                        paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]
                         segments.extend(paragraphs)
-                
                 except Exception as e:
                     self.logger.warning(f"Error extracting page {page_num}: {e}")
-        
         return segments
-    
-    def _split_into_paragraphs(self, text: str) -> List[str]:
-        """Split text into meaningful paragraphs."""
-        # Clean up text
-        text = re.sub(r'\s+', ' ', text)  # Normalize whitespace
-        text = re.sub(r'\n+', '\n', text)  # Normalize line breaks
-        
-        # Split by double line breaks or sentence patterns
-        paragraphs = re.split(r'\n\s*\n|\. {2,}', text)
-        
-        # Filter and clean paragraphs
-        cleaned_paragraphs = []
-        for para in paragraphs:
-            para = para.strip()
-            if len(para) > 50:  # Minimum paragraph length
-                cleaned_paragraphs.append(para)
-        
-        return cleaned_paragraphs
 
 
 class CSVProcessor(FileProcessor):

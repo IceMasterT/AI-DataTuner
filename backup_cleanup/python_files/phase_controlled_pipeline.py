@@ -997,6 +997,27 @@ class PhaseControlledPipeline:
                             json.dump(manifest, f, indent=2)
                         result.output_files.append(str(manifest_file))
 
+                    # Save structured extraction and furniture audit log if available
+                    try:
+                        from document_structure_extractor import DocumentStructureExtractor
+                        from furniture_cleaner import FurnitureCleaner
+                        extractor = DocumentStructureExtractor()
+                        doc_struct = extractor.extract_document(file_path)
+                        cleaner = FurnitureCleaner()
+                        cleaning_res = cleaner.clean_document(doc_struct)
+                        
+                        struct_file = output_path / f"{file_path.stem}_structure.json"
+                        with open(struct_file, "w", encoding="utf-8") as f:
+                            json.dump(doc_struct.to_dict(), f, indent=2)
+                        result.output_files.append(str(struct_file))
+
+                        audit_file = output_path / f"{file_path.stem}_furniture_audit.json"
+                        with open(audit_file, "w", encoding="utf-8") as f:
+                            json.dump(cleaning_res.to_dict(), f, indent=2)
+                        result.output_files.append(str(audit_file))
+                    except Exception as struct_err:
+                        self.logger.debug(f"Structure extraction artifact skipped for {file_path.name}: {struct_err}")
+
                     result.files_processed += 1
                     self.logger.info(
                         f"Phase 1: Processed {file_path.name} -> {len(written_files)} output file(s)"
@@ -1035,53 +1056,137 @@ class PhaseControlledPipeline:
         return result
 
     def _execute_phase2(self, config: PhaseConfig, result: PhaseResult) -> PhaseResult:
-        """Execute Phase 2: Chunking & Fact Extraction."""
+        """Execute Phase 2: Structure-Aware Chunking, Fact Extraction & Validation."""
         try:
-            from text_chunker import AdvancedChunker
-        except ImportError:
-            # Fallback to basic chunking
-            AdvancedChunker = None
+            from document_structure_extractor import DocumentStructureExtractor, ExtractedBlock, ExtractedDocument
+            from furniture_cleaner import FurnitureCleaner
+            from section_hierarchy_builder import SectionHierarchyBuilder
+            from structured_chunker import StructuredChunker, TokenCounter
+            from chunk_validator import ChunkValidator, DocumentStoreDeduplicator
+            from chunk_context_formatter import ChunkContextFormatter
+            use_structured_pipeline = True
+        except ImportError as imp_err:
+            self.logger.warning(f"Structured pipeline import error: {imp_err}")
+            use_structured_pipeline = False
 
         input_path = Path(config.input_folder)  # Phase 1 folder
         output_path = Path(config.output_folder)  # Phase 2 folder
         output_path.mkdir(exist_ok=True)
 
         self.logger.info(
-            f"Phase 2: Processing chunks from {input_path} to {output_path}"
+            f"Phase 2: Processing structure-aware chunks from {input_path} to {output_path}"
         )
 
-        # Initialize chunker
-        if AdvancedChunker:
-            chunker = AdvancedChunker(
-                chunk_size=config.settings.get("max_chunk_tokens", 150),
-                overlap=config.settings.get("token_overlap", 1),
-            )
-        else:
-            chunker = None
+        target_tokens = int(config.settings.get("target_tokens", 500) or 500)
+        max_tokens = int(config.settings.get("max_chunk_tokens", 800) or 800)
 
-        # Process all text files from Phase 1
-        for file_path in input_path.glob("*.txt"):
+        # Process all text and structure files from Phase 1
+        text_files = list(input_path.glob("*.txt"))
+
+        for file_path in text_files:
             try:
-                with open(file_path, "r", encoding="utf-8") as f:
-                    content = f.read()
+                base_stem = file_path.stem.replace("_sanitized", "")
+                struct_file = input_path / f"{base_stem}_structure.json"
 
                 # Create subfolder for this file in Phase 2
                 if config.settings.get("create_subfolders", True):
-                    file_output_path = output_path / file_path.stem
+                    file_output_path = output_path / base_stem
                     file_output_path.mkdir(exist_ok=True)
                 else:
                     file_output_path = output_path
 
-                # Chunk the content
-                if chunker:
-                    chunks = chunker.chunk_text(content)
+                if use_structured_pipeline:
+                    # Load structured document if available or extract from text
+                    if struct_file.exists():
+                        with open(struct_file, "r", encoding="utf-8") as sf:
+                            sdata = json.load(sf)
+                        blocks = [
+                            ExtractedBlock(
+                                block_id=b["block_id"],
+                                page_num=b["page_num"],
+                                bbox=tuple(b.get("bbox", (0.0, 0.0, 0.0, 0.0))),
+                                text=b["text"],
+                                block_type=b.get("block_type", "paragraph"),
+                                font_size=b.get("font_size", 12.0),
+                                is_bold=b.get("is_bold", False),
+                                is_heading=b.get("is_heading", False),
+                                heading_level=b.get("heading_level", 0),
+                                reading_order_idx=b.get("reading_order_idx", 0),
+                                is_garbled=b.get("is_garbled", False),
+                                garbled_reason=b.get("garbled_reason"),
+                                metadata=b.get("metadata", {})
+                            )
+                            for b in sdata.get("blocks", [])
+                        ]
+                        extracted_doc = ExtractedDocument(
+                            document_id=sdata.get("document_id", base_stem),
+                            source_file=sdata.get("source_file", str(file_path)),
+                            file_type=sdata.get("file_type", "pdf"),
+                            page_count=sdata.get("page_count", 1),
+                            blocks=blocks,
+                            raw_text=sdata.get("raw_text", ""),
+                            raw_extraction=sdata.get("raw_extraction", {})
+                        )
+                    else:
+                        extractor = DocumentStructureExtractor()
+                        extracted_doc = extractor.extract_document(file_path)
+
+                    # 1. Clean furniture & tag TOC/bio/promo
+                    cleaner = FurnitureCleaner()
+                    clean_res = cleaner.clean_document(extracted_doc)
+
+                    # 2. Build Section Hierarchy
+                    hierarchy_builder = SectionHierarchyBuilder()
+                    hierarchy = hierarchy_builder.build_hierarchy(clean_res.cleaned_blocks, extracted_doc.document_id)
+
+                    # 3. Structure-Aware Semantic Chunking (500 target, 800 max tokens)
+                    chunker = StructuredChunker(target_tokens=target_tokens, max_tokens=max_tokens)
+                    structured_chunks = chunker.chunk_hierarchy(hierarchy)
+
+                    # 4. Validation & Manifest
+                    validator = ChunkValidator()
+                    validation_report = validator.validate_chunks(
+                        structured_chunks, extracted_doc, clean_res.removed_blocks
+                    )
+
+                    # 5. Export individual chunks and JSONL metadata
+                    for idx, s_chunk in enumerate(structured_chunks):
+                        chunk_file = file_output_path / f"chunk_{idx:03d}.txt"
+                        with open(chunk_file, "w", encoding="utf-8") as f:
+                            f.write(s_chunk.embedding_text)
+                        result.output_files.append(str(chunk_file))
+
+                    # Export metadata JSONL
+                    jsonl_file = file_output_path / f"{base_stem}_chunks.jsonl"
+                    ChunkContextFormatter.export_chunks_jsonl(structured_chunks, str(jsonl_file))
+                    result.output_files.append(str(jsonl_file))
+
+                    # Export validation report
+                    val_file = file_output_path / f"{base_stem}_validation_report.json"
+                    with open(val_file, "w", encoding="utf-8") as f:
+                        json.dump(validation_report.to_dict(), f, indent=2)
+                    result.output_files.append(str(val_file))
+
+                    # Export source block manifest
+                    manifest_file = file_output_path / f"{base_stem}_source_manifest.json"
+                    with open(manifest_file, "w", encoding="utf-8") as f:
+                        json.dump(validation_report.manifest.to_dict(), f, indent=2)
+                    result.output_files.append(str(manifest_file))
+
+                    result.files_processed += 1
+                    self.logger.info(
+                        f"Phase 2: Structured chunked {file_path.name} into {len(structured_chunks)} chunks (valid: {validation_report.is_valid}) → {file_output_path}"
+                    )
+
                 else:
-                    # Basic chunking - split by sentences
+                    # Fallback basic chunking
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        content = f.read()
                     sentences = content.split(". ")
                     chunks = []
                     current_chunk = ""
                     for sentence in sentences:
-                        if len(current_chunk) + len(sentence) < 500:  # Basic size limit
+                        if len(current_chunk) + len(sentence) < 500:
                             current_chunk += sentence + ". "
                         else:
                             if current_chunk:
@@ -1090,18 +1195,16 @@ class PhaseControlledPipeline:
                     if current_chunk:
                         chunks.append(current_chunk.strip())
 
-                # Save chunks to Phase 2 folder
-                for i, chunk in enumerate(chunks):
-                    chunk_file = file_output_path / f"chunk_{i:03d}.txt"
-                    with open(chunk_file, "w", encoding="utf-8") as f:
-                        f.write(chunk)
+                    for i, chunk in enumerate(chunks):
+                        chunk_file = file_output_path / f"chunk_{i:03d}.txt"
+                        with open(chunk_file, "w", encoding="utf-8") as f:
+                            f.write(chunk)
+                        result.output_files.append(str(chunk_file))
 
-                    result.output_files.append(str(chunk_file))
-
-                result.files_processed += 1
-                self.logger.info(
-                    f"Phase 2: Chunked {file_path.name} into {len(chunks)} chunks → {file_output_path}"
-                )
+                    result.files_processed += 1
+                    self.logger.info(
+                        f"Phase 2: Fallback chunked {file_path.name} into {len(chunks)} chunks → {file_output_path}"
+                    )
 
             except Exception as e:
                 error_msg = f"Error chunking {file_path}: {e}"

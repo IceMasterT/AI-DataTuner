@@ -302,6 +302,8 @@ def setup_environment(
         "nltk",
         "PyPDF2",
         "pdfplumber",
+        "pymupdf",
+        "tiktoken",
         "pathlib",
         "json",
         "logging",
@@ -313,6 +315,13 @@ def setup_environment(
             __import__(module)
             print(f"✅ {module}")
         except ImportError:
+            if module == "pymupdf":
+                try:
+                    __import__("fitz")
+                    print(f"✅ {module} (via fitz)")
+                    continue
+                except ImportError:
+                    pass
             print(f"❌ {module}")
             failed_imports.append(module)
 

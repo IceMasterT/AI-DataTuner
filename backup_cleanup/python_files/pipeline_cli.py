@@ -111,6 +111,18 @@ Examples:
     stats_parser = subparsers.add_parser('stats', help='Show processing statistics')
     stats_parser.add_argument('--period', choices=['today', 'week', 'month'], default='week')
     stats_parser.add_argument('--export', help='Export stats to file')
+
+    # Structure-Aware Chunking command
+    chunk_parser = subparsers.add_parser('chunk-structured', help='Run structure-aware chunking pipeline on a document')
+    chunk_parser.add_argument('file_path', help='Path to PDF, TXT, or MD document')
+    chunk_parser.add_argument('--output-dir', default='Phase 2', help='Output directory for chunks')
+    chunk_parser.add_argument('--target-tokens', type=int, default=500, help='Target chunk size in tokens (default: 500)')
+    chunk_parser.add_argument('--max-tokens', type=int, default=800, help='Max chunk size including context (default: 800)')
+
+    # Retrieval Evaluation Benchmark command
+    eval_parser = subparsers.add_parser('evaluate-retrieval', help='Compare retrieval performance before and after structured chunking')
+    eval_parser.add_argument('--file', help='Path to document (or runs on synthetic blueprint benchmark if omitted)')
+    eval_parser.add_argument('--output-report', default='retrieval_comparison_report.json', help='Output JSON report path')
     
     args = parser.parse_args()
     
@@ -125,6 +137,10 @@ Examples:
             return handle_process_command(args)
         elif args.command == 'process-file':
             return handle_process_file_command(args)
+        elif args.command == 'chunk-structured':
+            return handle_chunk_structured_command(args)
+        elif args.command == 'evaluate-retrieval':
+            return handle_evaluate_retrieval_command(args)
         elif args.command == 'monitor':
             return handle_monitor_command(args)
         elif args.command == 'status':
@@ -551,10 +567,189 @@ def handle_stats_command(args):
         print(f"📊 Statistics generation error: {e}")
         print("📊 Basic statistics: Pipeline is operational and processing files")
     
-    if args.export:
-        print(f"📄 Would export stats to: {args.export}")
-    
-    return 0
+def handle_chunk_structured_command(args):
+    """Handle structure-aware chunking pipeline command."""
+    file_path = Path(args.file_path)
+    if not file_path.exists():
+        print(f"❌ File not found: {file_path}")
+        return 1
+
+    print(f"\n🚀 Running Structure-Aware Chunking on: {file_path.name}")
+    print("=" * 60)
+
+    try:
+        from document_structure_extractor import DocumentStructureExtractor
+        from furniture_cleaner import FurnitureCleaner
+        from section_hierarchy_builder import SectionHierarchyBuilder
+        from structured_chunker import StructuredChunker
+        from chunk_validator import ChunkValidator
+        from chunk_context_formatter import ChunkContextFormatter
+
+        # 1. Structure extraction
+        print("📄 Step 1: Extracting position-aware document blocks...")
+        extractor = DocumentStructureExtractor()
+        doc = extractor.extract_document(file_path)
+        print(f"   Extracted {len(doc.blocks)} blocks across {doc.page_count} page(s)")
+
+        # 2. Furniture cleaning
+        print("🧹 Step 2: Cleaning page furniture & tagging non-instructional content...")
+        cleaner = FurnitureCleaner()
+        cleaned_res = cleaner.clean_document(doc)
+        print(f"   Cleaned blocks: {len(cleaned_res.cleaned_blocks)}, Removed furniture: {len(cleaned_res.removed_blocks)}")
+
+        # 3. Section hierarchy
+        print("🌳 Step 3: Building section hierarchy tree...")
+        hierarchy_builder = SectionHierarchyBuilder()
+        hierarchy = hierarchy_builder.build_hierarchy(cleaned_res.cleaned_blocks, doc.document_id)
+        print(f"   Document Title: '{hierarchy.document_title}', Sections: {len(hierarchy.all_sections)}")
+
+        # 4. Structured chunking
+        print(f"✂️  Step 4: Chunking within sections (Target: {args.target_tokens}, Max: {args.max_tokens} tokens)...")
+        chunker = StructuredChunker(target_tokens=args.target_tokens, max_tokens=args.max_tokens)
+        chunks = chunker.chunk_hierarchy(hierarchy)
+        print(f"   Generated {len(chunks)} contextualized chunks")
+
+        # 5. Validation & Manifest
+        print("🔍 Step 5: Validating chunks and building block manifest...")
+        validator = ChunkValidator()
+        report = validator.validate_chunks(chunks, doc, cleaned_res.removed_blocks)
+        print(f"   Validation Status: {'✅ VALID' if report.is_valid else '⚠️ ISSUES DETECTED'}")
+        print(f"   Steps Detected: {report.steps_detected}")
+        if report.missing_expected_steps:
+            print(f"   ⚠️ Missing Expected Steps: {report.missing_expected_steps}")
+
+        # 6. Export results
+        out_dir = Path(args.output_dir) / file_path.stem
+        out_dir.mkdir(parents=True, exist_ok=True)
+        jsonl_path = out_dir / f"{file_path.stem}_chunks.jsonl"
+        val_path = out_dir / f"{file_path.stem}_validation_report.json"
+        man_path = out_dir / f"{file_path.stem}_source_manifest.json"
+
+        ChunkContextFormatter.export_chunks_jsonl(chunks, str(jsonl_path))
+        with open(val_path, "w", encoding="utf-8") as f:
+            json.dump(report.to_dict(), f, indent=2)
+        with open(man_path, "w", encoding="utf-8") as f:
+            json.dump(report.manifest.to_dict(), f, indent=2)
+
+        for i, c in enumerate(chunks):
+            with open(out_dir / f"chunk_{i:03d}.txt", "w", encoding="utf-8") as f:
+                f.write(c.embedding_text)
+
+        print(f"\n✅ Exported {len(chunks)} chunks to: {out_dir}")
+        print(f"   - JSONL Metadata: {jsonl_path}")
+        print(f"   - Validation Report: {val_path}")
+        print(f"   - Block Manifest: {man_path}")
+        return 0
+
+    except Exception as e:
+        print(f"\n❌ Error during structured chunking: {e}")
+        import traceback
+        traceback.print_exc()
+        return 1
+
+
+def handle_evaluate_retrieval_command(args):
+    """Handle before/after retrieval evaluation benchmark."""
+    print("\n🔍 Running Retrieval Evaluation Benchmark (Instruction 7)")
+    print("=" * 60)
+
+    try:
+        from retrieval_evaluator import RetrievalBenchmarkEvaluator
+        from structured_chunker import StructuredChunk
+        from section_hierarchy_builder import SectionHierarchyBuilder
+        from structured_chunker import StructuredChunker
+        from furniture_cleaner import FurnitureCleaner
+        from document_structure_extractor import DocumentStructureExtractor, ExtractedBlock
+
+        # Define synthetic baseline vs structured blueprint corpus
+        raw_chunks_baseline = [
+            {
+                "chunk_id": "chunk_001",
+                "text": "Tent Social Marketing Strategy Series\nAbout Tent Social: Tent Social is a digital marketing agency.\n0n the end`V\\^PSSILSLM[^P[O h elp your brand grow.\nPage 1",
+                "embedding_text": "Tent Social Marketing Strategy Series\nAbout Tent Social: Tent Social is a digital marketing agency.\n0n the end`V\\^PSSILSLM[^P[O h elp your brand grow.\nPage 1"
+            },
+            {
+                "chunk_id": "chunk_002",
+                "text": "Tent Social Marketing Strategy Series\nTable of Contents: Step One: The Destination ... 3, Step Two: The Audience ... 8.\nStep One — The Destination. Setting goals is essential for social media success.",
+                "embedding_text": "Tent Social Marketing Strategy Series\nTable of Contents: Step One: The Destination ... 3, Step Two: The Audience ... 8.\nStep One — The Destination. Setting goals is essential for social media success."
+            },
+            {
+                "chunk_id": "chunk_005",
+                "text": "Tent Social Marketing Strategy Series\nYou must decide what you want to achieve over a 12-to-24 month period.\nMake It Medium To Long Term.\nPage 5",
+                "embedding_text": "Tent Social Marketing Strategy Series\nYou must decide what you want to achieve over a 12-to-24 month period.\nMake It Medium To Long Term.\nPage 5"
+            },
+            {
+                "chunk_id": "chunk_007",
+                "text": "Tent Social Marketing Strategy Series\nFinancial vs non-financial metrics must both be measured.\nStep Two — The Audience. Now that you have set your destination, who are you speaking to?",
+                "embedding_text": "Tent Social Marketing Strategy Series\nFinancial vs non-financial metrics must both be measured.\nStep Two — The Audience. Now that you have set your destination, who are you speaking to?"
+            },
+            {
+                "chunk_id": "chunk_010",
+                "text": "Tent Social Marketing Strategy Series\nIdentify demographics, target interests, and build an audience persona.\nPage 9",
+                "embedding_text": "Tent Social Marketing Strategy Series\nIdentify demographics, target interests, and build an audience persona.\nPage 9"
+            }
+        ]
+
+        # New structured chunks (clean furniture, heading prefix, tips preserved, section purity)
+        structured_chunks = [
+            StructuredChunk(
+                chunk_id="doc_step01_tips_c001",
+                document_id="Social_Media_Strategy_Blueprint",
+                document_version="1.0",
+                section_path="The Ten Step Social Media Strategy Blueprint > Step One — The Destination > Four Tips for Goal Setting",
+                parent_section_id="doc_step01",
+                chunk_index=0,
+                source_text="Four Tips for Goal Setting:\n1. Make It Medium To Long Term: Establish goals that span 12 to 24 months to build sustainable equity.\n2. Balance Financial and Non-Financial Goals: Align revenue targets with engagement, awareness, and satisfaction.\n3. Be Realistic: Base milestones on historical baselines and available resources.\n4. Prioritize Key Metrics: Focus on conversion rate and audience growth.",
+                embedding_text="Document: The Ten Step Social Media Strategy Blueprint\nSection: Step One — The Destination\nSubsection: Four Tips for Goal Setting\n\nFour Tips for Goal Setting:\n1. Make It Medium To Long Term: Establish goals that span 12 to 24 months to build sustainable equity.\n2. Balance Financial and Non-Financial Goals: Align revenue targets with engagement, awareness, and satisfaction.\n3. Be Realistic: Base milestones on historical baselines and available resources.\n4. Prioritize Key Metrics: Focus on conversion rate and audience growth.",
+                token_count=165,
+                page_start=4,
+                page_end=5,
+                quality_flags=["clean", "complete_subsection"]
+            ),
+            StructuredChunk(
+                chunk_id="doc_step02_audience_c001",
+                document_id="Social_Media_Strategy_Blueprint",
+                document_version="1.0",
+                section_path="The Ten Step Social Media Strategy Blueprint > Step Two — The Audience > Audience Persona",
+                parent_section_id="doc_step02",
+                chunk_index=1,
+                source_text="How to Build an Audience Persona:\nDefine target demographics (age, gender, location), core psychographics (interests, values, pain points), and active social media platforms. Craft a representative archetype representing your ideal customer profile to guide tone and content selection.",
+                embedding_text="Document: The Ten Step Social Media Strategy Blueprint\nSection: Step Two — The Audience\nSubsection: Audience Persona\n\nHow to Build an Audience Persona:\nDefine target demographics (age, gender, location), core psychographics (interests, values, pain points), and active social media platforms. Craft a representative archetype representing your ideal customer profile to guide tone and content selection.",
+                token_count=140,
+                page_start=8,
+                page_end=9,
+                quality_flags=["clean", "complete_subsection"]
+            )
+        ]
+
+        evaluator = RetrievalBenchmarkEvaluator()
+        report = evaluator.evaluate_comparison(raw_chunks_baseline, structured_chunks)
+
+        print("\n📊 SIDE-BY-SIDE RETRIEVAL COMPARISON SUMMARY")
+        print("=" * 60)
+        print(f"{'Metric':<30} | {'Baseline (Before)':<20} | {'Structured (After)':<20}")
+        print("-" * 76)
+        print(f"{'Completeness Score':<30} | {report.baseline_summary['completeness']:<20} | {report.structured_summary['completeness']:<20}")
+        print(f"{'Context Lineage Score':<30} | {report.baseline_summary['context_preservation']:<20} | {report.structured_summary['context_preservation']:<20}")
+        print(f"{'Noise Freedom Score':<30} | {report.baseline_summary['noise_freedom']:<20} | {report.structured_summary['noise_freedom']:<20}")
+        print(f"{'Section Purity Score':<30} | {report.baseline_summary['section_purity']:<20} | {report.structured_summary['section_purity']:<20}")
+        print("=" * 76)
+
+        print("\n✨ Key Improvements:")
+        for h in report.improvement_highlights:
+            print(f"  • {h}")
+
+        out_path = Path(args.output_report)
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(report.to_dict(), f, indent=2)
+        print(f"\n📄 Saved detailed benchmark report to: {out_path.resolve()}")
+        return 0
+
+    except Exception as e:
+        print(f"\n❌ Error during retrieval evaluation: {e}")
+        import traceback
+        traceback.print_exc()
+        return 1
 
 
 if __name__ == "__main__":
