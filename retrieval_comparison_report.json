@@ -1,0 +1,243 @@
+{
+  "benchmark_timestamp": "2026-09-28T09:19:22.934734",
+  "queries_evaluated": 2,
+  "baseline_summary": {
+    "completeness": "87.5%",
+    "context_preservation": "0.0%",
+    "noise_freedom": "0.0%",
+    "section_purity": "80.0%"
+  },
+  "structured_summary": {
+    "completeness": "100.0%",
+    "context_preservation": "100.0%",
+    "noise_freedom": "100.0%",
+    "section_purity": "100.0%"
+  },
+  "improvement_highlights": [
+    "Completeness improved from 87.5% to 100.0% (Top-5 results retain all tips/steps together).",
+    "Context lineage score improved from 0.0% to 100.0% (explicit Document > Section breadcrumbs).",
+    "Noise freedom improved from 0.0% to 100.0% (eliminated running headers and footers).",
+    "Section boundary purity improved from 80.0% to 100.0% (zero cross-step bleeding)."
+  ],
+  "detailed_comparisons": [
+    {
+      "query": "What are the four goal-setting tips?",
+      "baseline": {
+        "query": "What are the four goal-setting tips?",
+        "system_name": "Baseline (Before)",
+        "completeness_score": "75.0%",
+        "context_preservation_score": "0.0%",
+        "noise_freedom_score": "0.0%",
+        "section_purity_score": "80.0%",
+        "top_1_hit": true,
+        "top_5_results": [
+          {
+            "rank": 1,
+            "chunk_id": "chunk_007",
+            "score": 2.874,
+            "text_preview": "Tent Social Marketing Strategy Series Financial vs non-financial metrics must both be measured. Step Two \u2014 The Audience.",
+            "section_path": "",
+            "has_furniture_noise": true,
+            "contains_required_answers": [
+              "Financial",
+              "Non-Financial"
+            ],
+            "is_pure_section": true
+          },
+          {
+            "rank": 2,
+            "chunk_id": "chunk_005",
+            "score": 2.112,
+            "text_preview": "Tent Social Marketing Strategy Series You must decide what you want to achieve over a 12-to-24 month period. Make It Med",
+            "section_path": "",
+            "has_furniture_noise": true,
+            "contains_required_answers": [
+              "Make It Medium To Long Term"
+            ],
+            "is_pure_section": true
+          },
+          {
+            "rank": 3,
+            "chunk_id": "chunk_002",
+            "score": 1.026,
+            "text_preview": "Tent Social Marketing Strategy Series Table of Contents: Step One: The Destination ... 3, Step Two: The Audience ... 8. ",
+            "section_path": "",
+            "has_furniture_noise": true,
+            "contains_required_answers": [],
+            "is_pure_section": false
+          },
+          {
+            "rank": 4,
+            "chunk_id": "chunk_001",
+            "score": 0.825,
+            "text_preview": "Tent Social Marketing Strategy Series About Tent Social: Tent Social is a digital marketing agency. 0n the end`V\\^PSSILS",
+            "section_path": "",
+            "has_furniture_noise": true,
+            "contains_required_answers": [],
+            "is_pure_section": true
+          },
+          {
+            "rank": 5,
+            "chunk_id": "chunk_010",
+            "score": 0.0,
+            "text_preview": "Tent Social Marketing Strategy Series Identify demographics, target interests, and build an audience persona. Page 9",
+            "section_path": "",
+            "has_furniture_noise": true,
+            "contains_required_answers": [],
+            "is_pure_section": true
+          }
+        ]
+      },
+      "structured": {
+        "query": "What are the four goal-setting tips?",
+        "system_name": "Structure-Aware (After)",
+        "completeness_score": "100.0%",
+        "context_preservation_score": "100.0%",
+        "noise_freedom_score": "100.0%",
+        "section_purity_score": "100.0%",
+        "top_1_hit": true,
+        "top_5_results": [
+          {
+            "rank": 1,
+            "chunk_id": "doc_step01_tips_c001",
+            "score": 2.51,
+            "text_preview": "Four Tips for Goal Setting: 1. Make It Medium To Long Term: Establish goals that span 12 to 24 months to build sustainab",
+            "section_path": "The Ten Step Social Media Strategy Blueprint > Step One \u2014 The Destination > Four Tips for Goal Setting",
+            "has_furniture_noise": false,
+            "contains_required_answers": [
+              "Make It Medium To Long Term",
+              "Financial",
+              "Non-Financial",
+              "Be Realistic"
+            ],
+            "is_pure_section": true
+          },
+          {
+            "rank": 2,
+            "chunk_id": "doc_step02_audience_c001",
+            "score": 0.306,
+            "text_preview": "How to Build an Audience Persona: Define target demographics (age, gender, location), core psychographics (interests, va",
+            "section_path": "The Ten Step Social Media Strategy Blueprint > Step Two \u2014 The Audience > Audience Persona",
+            "has_furniture_noise": false,
+            "contains_required_answers": [],
+            "is_pure_section": true
+          }
+        ]
+      },
+      "delta_completeness": "+25.0%"
+    },
+    {
+      "query": "How do I build an audience persona?",
+      "baseline": {
+        "query": "How do I build an audience persona?",
+        "system_name": "Baseline (Before)",
+        "completeness_score": "100.0%",
+        "context_preservation_score": "0.0%",
+        "noise_freedom_score": "0.0%",
+        "section_purity_score": "80.0%",
+        "top_1_hit": true,
+        "top_5_results": [
+          {
+            "rank": 1,
+            "chunk_id": "chunk_010",
+            "score": 7.435,
+            "text_preview": "Tent Social Marketing Strategy Series Identify demographics, target interests, and build an audience persona. Page 9",
+            "section_path": "",
+            "has_furniture_noise": true,
+            "contains_required_answers": [
+              "Audience",
+              "Persona",
+              "Demographics",
+              "Target"
+            ],
+            "is_pure_section": true
+          },
+          {
+            "rank": 2,
+            "chunk_id": "chunk_002",
+            "score": 0.808,
+            "text_preview": "Tent Social Marketing Strategy Series Table of Contents: Step One: The Destination ... 3, Step Two: The Audience ... 8. ",
+            "section_path": "",
+            "has_furniture_noise": true,
+            "contains_required_answers": [
+              "Audience"
+            ],
+            "is_pure_section": false
+          },
+          {
+            "rank": 3,
+            "chunk_id": "chunk_007",
+            "score": 0.804,
+            "text_preview": "Tent Social Marketing Strategy Series Financial vs non-financial metrics must both be measured. Step Two \u2014 The Audience.",
+            "section_path": "",
+            "has_furniture_noise": true,
+            "contains_required_answers": [
+              "Audience"
+            ],
+            "is_pure_section": true
+          },
+          {
+            "rank": 4,
+            "chunk_id": "chunk_001",
+            "score": 0.0,
+            "text_preview": "Tent Social Marketing Strategy Series About Tent Social: Tent Social is a digital marketing agency. 0n the end`V\\^PSSILS",
+            "section_path": "",
+            "has_furniture_noise": true,
+            "contains_required_answers": [],
+            "is_pure_section": true
+          },
+          {
+            "rank": 5,
+            "chunk_id": "chunk_005",
+            "score": 0.0,
+            "text_preview": "Tent Social Marketing Strategy Series You must decide what you want to achieve over a 12-to-24 month period. Make It Med",
+            "section_path": "",
+            "has_furniture_noise": true,
+            "contains_required_answers": [],
+            "is_pure_section": true
+          }
+        ]
+      },
+      "structured": {
+        "query": "How do I build an audience persona?",
+        "system_name": "Structure-Aware (After)",
+        "completeness_score": "100.0%",
+        "context_preservation_score": "100.0%",
+        "noise_freedom_score": "100.0%",
+        "section_purity_score": "100.0%",
+        "top_1_hit": true,
+        "top_5_results": [
+          {
+            "rank": 1,
+            "chunk_id": "doc_step02_audience_c001",
+            "score": 3.63,
+            "text_preview": "How to Build an Audience Persona: Define target demographics (age, gender, location), core psychographics (interests, va",
+            "section_path": "The Ten Step Social Media Strategy Blueprint > Step Two \u2014 The Audience > Audience Persona",
+            "has_furniture_noise": false,
+            "contains_required_answers": [
+              "Audience",
+              "Persona",
+              "Demographics",
+              "Target"
+            ],
+            "is_pure_section": true
+          },
+          {
+            "rank": 2,
+            "chunk_id": "doc_step01_tips_c001",
+            "score": 0.458,
+            "text_preview": "Four Tips for Goal Setting: 1. Make It Medium To Long Term: Establish goals that span 12 to 24 months to build sustainab",
+            "section_path": "The Ten Step Social Media Strategy Blueprint > Step One \u2014 The Destination > Four Tips for Goal Setting",
+            "has_furniture_noise": false,
+            "contains_required_answers": [
+              "Audience",
+              "Target"
+            ],
+            "is_pure_section": true
+          }
+        ]
+      },
+      "delta_completeness": "+0.0%"
+    }
+  ]
+}
