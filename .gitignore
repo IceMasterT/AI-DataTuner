@@ -79,3 +79,6 @@ secrets/
 sessions/
 *.jsonl
 *.sqlite3
+
+# Written by the test suite when run from python_files/
+backup_cleanup/python_files/custom_personalities.json
