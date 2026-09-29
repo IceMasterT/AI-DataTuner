@@ -95,6 +95,9 @@ class SectionHierarchyBuilder:
     ]
 
     # TOC detection patterns
+    # Body-text length that marks a page-1 heading as a section opener, not a title page
+    TITLE_BODY_MIN_CHARS = 80
+
     TOC_LINE_PATTERN = re.compile(r'\.{3,}\s*\d+|\bpage\s+\d+\b', re.IGNORECASE)
 
     def __init__(self, default_document_title: Optional[str] = None):
@@ -285,11 +288,23 @@ class SectionHierarchyBuilder:
 
     def _infer_document_title(self, blocks: List[ExtractedBlock], fallback_id: str) -> str:
         """Infer document title from first page headings or top text."""
-        for b in blocks[:5]:
+        for i, b in enumerate(blocks[:5]):
             if b.page_num == 1 and (b.is_heading or b.font_size > 14.0):
                 text = b.text.split('\n')[0].strip()
-                if len(text) > 5 and len(text) < 100:
-                    return text
+                if not (5 < len(text) < 100):
+                    continue
+                # A heading that opens a section is content, not the document title;
+                # using it as the title duplicates it in every section path.
+                if any(pat.match(text) for pat in self.SECTION_PATTERNS + self.SUBSECTION_PATTERNS):
+                    continue
+                # A title page carries no body text; a heading followed by body text
+                # on the same page is the first section's heading.
+                if any(
+                    n.page_num == 1 and not n.is_heading and len(n.text.strip()) >= self.TITLE_BODY_MIN_CHARS
+                    for n in blocks[i + 1:]
+                ):
+                    continue
+                return text
 
         # Clean fallback_id (e.g. 128790086-Social-Media-Strategy-Blueprint -> The Ten Step Social Media Strategy Blueprint)
         clean_name = re.sub(r'^\d+[\-_]?', '', fallback_id)

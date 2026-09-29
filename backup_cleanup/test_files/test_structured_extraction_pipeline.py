@@ -141,6 +141,32 @@ class TestInstruction2_CleanPageFurniture(unittest.TestCase):
 class TestInstruction3_SectionHierarchy(unittest.TestCase):
     """Test Instruction 3: Build a section hierarchy before creating chunks."""
 
+    def test_first_section_heading_is_not_used_as_document_title(self):
+        body = "Set clear goals and write them down. Review them weekly so small steps compound over time."
+        blocks = [
+            ExtractedBlock(block_id="h1", page_num=1, bbox=(50, 50, 500, 80),
+                           text="Chapter 1: Goals", is_heading=True, heading_level=1, font_size=20.0),
+            ExtractedBlock(block_id="p1", page_num=1, bbox=(50, 100, 500, 200), text=body),
+            ExtractedBlock(block_id="h2", page_num=2, bbox=(50, 50, 500, 80),
+                           text="Chapter 2: Audience", is_heading=True, heading_level=1, font_size=20.0),
+            ExtractedBlock(block_id="p2", page_num=2, bbox=(50, 100, 500, 200), text=body),
+        ]
+        hierarchy = SectionHierarchyBuilder().build_hierarchy(blocks, "goals_guide")
+        self.assertEqual(hierarchy.document_title, "Goals Guide")
+        self.assertEqual([c.section_path for c in hierarchy.root.children],
+                         ["Goals Guide > Chapter 1: Goals", "Goals Guide > Chapter 2: Audience"])
+
+    def test_real_title_page_is_still_used_as_document_title(self):
+        blocks = [
+            ExtractedBlock(block_id="t", page_num=1, bbox=(50, 50, 500, 90),
+                           text="Marketing Strategy Handbook", is_heading=True, heading_level=1, font_size=28.0),
+            ExtractedBlock(block_id="a", page_num=1, bbox=(50, 120, 500, 140), text="By The Team"),
+            ExtractedBlock(block_id="h", page_num=2, bbox=(50, 50, 500, 80),
+                           text="Chapter 1: Goals", is_heading=True, heading_level=1, font_size=20.0),
+        ]
+        hierarchy = SectionHierarchyBuilder().build_hierarchy(blocks, "handbook")
+        self.assertEqual(hierarchy.document_title, "Marketing Strategy Handbook")
+
     def test_hierarchy_tree_and_parent_inheritance(self):
         builder = SectionHierarchyBuilder(default_document_title="The Ten Step Social Media Strategy Blueprint")
         blocks = [
