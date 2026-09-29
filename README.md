@@ -6,6 +6,8 @@ A production-ready desktop application for transforming raw documents into high-
 
 AI Data Pipeline takes your raw documents (PDF, CSV, JSON, TXT, Markdown) and converts them into formatted training data ready for fine-tuning AI models. Think of it as a "data cleaning and formatting factory" - you feed it messy documents, and it outputs clean, properly formatted training examples.
 
+PDFs get special treatment. Instead of flattening a PDF into one blob of text and slicing it every N characters, the pipeline reads the page layout, strips repeated headers and footers, rebuilds the document's section tree, and chunks **inside** sections so every chunk is a complete thought that carries its own breadcrumb (`Document > Section > Subsection`). See [Structure-Aware PDF Processing](#structure-aware-pdf-processing).
+
 ### Use Cases
 
 | Use Case | Description |
@@ -14,11 +16,12 @@ AI Data Pipeline takes your raw documents (PDF, CSV, JSON, TXT, Markdown) and co
 | **Train Custom Models** | Create training data for Llama, Qwen, Mistral, and other open models |
 | **Add Personality** | Apply consistent tone and personality to your training data |
 | **Data Cleaning** | Sanitize documents by removing malware, fixing encoding, normalizing text |
+| **RAG / Retrieval Prep** | Produce self-contained, section-aware chunks with source metadata, ready to embed |
 
 ### The Pipeline Flow
 
 ```
-Raw Documents → Phase 1 (Sanitize/Clean) → Phase 2 (Chunk) → Phase 3 (Personality + Format) → Phase 4 (Quality Check) → Training Data
+Raw Documents → Phase 1 (Sanitize + Extract Structure) → Phase 2 (Structure-Aware Chunk + Validate) → Phase 3 (Personality + Format) → Phase 4 (Quality Check) → Training Data
 ```
 
 ```mermaid
@@ -104,12 +107,78 @@ flowchart TD
 
 ---
 
+## Structure-Aware PDF Processing
+
+Naive PDF chunking fails in predictable ways: running headers and page numbers end up inside chunks, a list of four tips gets cut in half, and a chunk retrieved on its own has no idea which chapter it came from. The structure-aware pipeline fixes each of these.
+
+```
+PDF → Extract blocks → Clean furniture → Build section tree → Chunk within sections → Add context → Validate → JSONL
+```
+
+| Stage | Module (`backup_cleanup/python_files/`) | What it does |
+|-------|-----------------------------------------|--------------|
+| **1. Extract** | `document_structure_extractor.py` | Reads PDFs with PyMuPDF and keeps each block's page, coordinates, font size, boldness and reading order. Classifies headings by font size and weight. Detects garbled text (broken spacing, encoding junk) and retries the page with alternate layout settings or OCR. Never guesses words with an LLM. |
+| **2. Clean** | `furniture_cleaner.py` | Removes repeated running headers/footers and standalone page numbers, using position on the page plus repetition across pages. Tags table-of-contents, author-bio and promotional blocks so they can be kept out of training text. Every removal is written to an audit log - nothing disappears silently. |
+| **3. Hierarchy** | `section_hierarchy_builder.py` | Builds a document → section → subsection tree from headings (`Chapter N`, `Step N`, `Part N`, `Module N`, markdown `##`, and font-based headings). The document title comes from a real title page, or from the filename when the PDF has none. |
+| **4. Chunk** | `structured_chunker.py` | Chunks inside a section, never across sections. Splits on paragraph, then sentence boundaries. Keeps numbered lists and labelled tips together. Counts real tokens with `tiktoken` (default target 500, max 800 including context). |
+| **5. Context** | `chunk_context_formatter.py` | Gives every chunk an `embedding_text` with a `Document:` / `Section:` / `Subsection:` prefix so it stands alone at retrieval time. Exports chunks as JSONL with page range, source block IDs and quality flags. |
+| **6. Validate** | `chunk_validator.py` | Before embedding, flags empty bodies, garbled text, detached headings and chunks that mix unrelated sections. Builds a manifest recording whether every source block was included, excluded or held for review. Re-importing a document replaces its old chunks instead of duplicating them. |
+| **7. Evaluate** | `retrieval_evaluator.py` | Benchmarks retrieval on naive chunks vs. structure-aware chunks with the same scorer. |
+
+### Run it from the command line
+
+```bash
+cd backup_cleanup/python_files
+
+# Chunk one document (PDF, TXT or MD) with the structure-aware pipeline
+python pipeline_cli.py chunk-structured path/to/document.pdf
+
+# Tune chunk size (tokens)
+python pipeline_cli.py chunk-structured path/to/document.pdf --target-tokens 400 --max-tokens 700
+
+# Benchmark structure-aware vs. naive chunking (built-in synthetic document)
+python pipeline_cli.py evaluate-retrieval
+python pipeline_cli.py evaluate-retrieval --output-report my_report.json
+```
+
+`chunk-structured` writes three files to `Phase 2/<document name>/` (change with `--output-dir`):
+
+| File | Contents |
+|------|----------|
+| `<name>_chunks.jsonl` | One chunk per line: `chunk_id`, `section_path`, `embedding_text`, `source_text`, `token_count`, `page_start`, `page_end`, `quality_flags`, `source_block_ids` |
+| `<name>_validation_report.json` | Every issue found, with severity (`error` / `warning`) and sample text |
+| `<name>_source_manifest.json` | The fate of every source block: included, excluded (with reason) or held for review |
+
+When you run the phase-controlled pipeline (the GUI's **Phase Control** tab / `phase_controlled_pipeline.py`), the same stages run automatically: Phase 1 saves `<name>_structure.json` and `<name>_furniture_audit.json` next to the sanitized text, and Phase 2 consumes them to produce the chunk files, JSONL, validation report and manifest. If any structured-pipeline module fails to import, Phase 2 falls back to the original sentence-based chunker and logs a warning; if structured PDF extraction fails, Phase 1 falls back to PyMuPDF text, then PyPDF2, then pdfplumber.
+
+### Phase 2 settings
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `target_tokens` | 500 | Preferred chunk size |
+| `max_chunk_tokens` | 800 | Hard ceiling, including the context prefix |
+
+### About the benchmark
+
+`retrieval_comparison_report.json` in the repo root compares naive and structure-aware chunking on two queries against a small synthetic document. It shows the approach behaves as designed (no header/footer noise, intact tip lists, breadcrumbs present), but two queries on a synthetic file is a smoke test, not proof of real-world gains.
+
+### Known limitations
+
+- `evaluate-retrieval` always runs on the built-in synthetic document. Its `--file` flag is accepted but not yet used, so it can't benchmark your own PDFs.
+- The `start` / `process` CLI commands go through the workflow orchestrator, not the phase-controlled pipeline, so use `chunk-structured` or the Phase Control tab to get structure-aware chunking.
+- The coverage check in `chunk_validator.py` looks for a specific ten-step document layout. It only activates when the text mentions "ten step", and it is a no-op for other documents.
+- Heading detection relies on font size/weight and the `Chapter/Step/Part/Module` patterns. PDFs whose headings are the same size as body text will produce a flat hierarchy.
+- Scanned PDFs need `pytesseract` (and the Tesseract binary) for the OCR retry; without it, image-only pages yield no text.
+
+---
+
 ## Installation
 
 ### Prerequisites
 
 - Python 3.10 or higher
 - 4GB RAM minimum (8GB recommended)
+- For structure-aware PDF processing: `pymupdf` and `tiktoken` (installed automatically by `setup.py` / `requirements.txt`; `pdfplumber` and `PyPDF2` are used as fallbacks)
 - Optional: API key for OpenAI/OpenRouter (not required for local models)
 
 ### Quick Install (Linux/macOS)
@@ -121,7 +190,7 @@ python3 setup.py --install-type full --yes
 
 This single command will:
 1. Create a virtual environment
-2. Install all dependencies
+2. Install all dependencies (including PyMuPDF and tiktoken)
 3. Create desktop launcher and app menu shortcuts
 
 ### Launch the Application
@@ -218,8 +287,8 @@ Fine-grained control over each processing stage.
 
 | Phase | Description |
 |-------|-------------|
-| **Phase 1: Sanitization** | Cleans text: removes malware, fixes encoding, normalizes Unicode, removes invisible characters |
-| **Phase 2: Chunking** | Splits large documents into manageable pieces |
+| **Phase 1: Sanitization** | Cleans text: removes malware, fixes encoding, normalizes Unicode, removes invisible characters. For PDFs, also extracts layout structure and removes page furniture (saved as `_structure.json` and `_furniture_audit.json`) |
+| **Phase 2: Chunking** | Structure-aware chunking: builds the section hierarchy, chunks within sections at paragraph/sentence boundaries, adds context prefixes, and validates every chunk before it moves on |
 | **Phase 3: Personality** | Applies tone/personality transformation and formats for target model |
 | **Phase 4: Quality** | Validates output quality, scores examples, filters low-quality content |
 
@@ -290,7 +359,7 @@ Manage where files are stored at each stage.
 |---------|-------------|
 | **Input Folder** | Original raw documents |
 | **Phase 1 Output** | Cleaned/sanitized files |
-| **Phase 2 Output** | Chunked files |
+| **Phase 2 Output** | Chunk files, `_chunks.jsonl`, validation report and source manifest |
 | **Phase 3 Output** | Personality-transformed files |
 | **Phase 4 Output** | Final quality-checked files (your training data) |
 
@@ -396,12 +465,37 @@ export OPENAI_MODEL="qwen2.5:7b"
 | Local model won't connect | Make sure LM Studio or Ollama is running before starting pipeline |
 | Out of memory | Reduce "Parallel Workers" in Processing tab to 1-2 |
 | Files not processing | Check input folder contains valid file types (PDF, CSV, JSON, TXT, MD) |
+| `ModuleNotFoundError: pymupdf` / `tiktoken` | Install into the project venv: `pip install -r requirements.txt` (or `uv pip install --python venv/bin/python -r requirements.txt`) |
+| Log says "Structured pipeline import error" | A structured-pipeline module or dependency is missing; Phase 2 is using the basic chunker. Fix the import, then re-run |
+| Log says "Structured PDF extraction failed, falling back" | The PDF couldn't be parsed with layout data (encrypted or corrupt?). Text is still extracted via PyMuPDF/PyPDF2, but without headings or furniture removal |
+| Validation report shows `garbled_text` | The PDF's text layer is broken. Try an OCR'd copy, or install `pytesseract` + Tesseract so the pipeline can retry the page with OCR |
+| Section paths look flat or wrong | The PDF's headings weren't detected. Check `<name>_structure.json` for `is_heading` flags |
 
 ### Getting Help
 
 1. Check the **Monitoring** tab for detailed error messages
 2. Review **Security Logs** in the Security tab
 3. Run with reduced parallelism to see clearer error output
+
+---
+
+## Running the Tests
+
+```bash
+cd backup_cleanup/python_files
+venv/bin/python -m pytest ../test_files -q
+```
+
+`test_structured_extraction_pipeline.py` covers each stage of the structure-aware pipeline: extraction, furniture cleaning, hierarchy building (including document-title inference), chunking, context formatting, validation and the retrieval benchmark.
+
+## More Documentation
+
+| Document | What's in it |
+|----------|--------------|
+| [`RUNBOOK.md`](RUNBOOK.md) | Day-to-day operator guide |
+| [`docs/AI_INTEGRATION_README.md`](docs/AI_INTEGRATION_README.md) | AI provider integration |
+| [`docs/CUSTOM_PERSONALITIES_README.md`](docs/CUSTOM_PERSONALITIES_README.md) | Writing custom personalities |
+| [`COMMUNITY.md`](COMMUNITY.md) | Discussions and support |
 
 ---
 
