@@ -306,11 +306,9 @@ class SectionHierarchyBuilder:
                     continue
                 return text
 
-        # Clean fallback_id (e.g. 128790086-Social-Media-Strategy-Blueprint -> The Ten Step Social Media Strategy Blueprint)
+        # Clean fallback_id (e.g. 128790086-Social-Media-Strategy-Blueprint -> Social Media Strategy Blueprint)
         clean_name = re.sub(r'^\d+[\-_]?', '', fallback_id)
         clean_name = clean_name.replace('-', ' ').replace('_', ' ').title()
-        if 'Social Media Strategy' in clean_name:
-            return "The Ten Step Social Media Strategy Blueprint"
         return clean_name or "Document"
 
     def _match_section_heading(self, block: ExtractedBlock) -> Tuple[bool, str, str]:
