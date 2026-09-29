@@ -58,6 +58,11 @@ class TestUtilityFunctions(unittest.TestCase):
         processed = preprocess_text(raw_text)
         self.assertEqual(processed, "This is a test. Another sentence.")
     
+    def test_preprocess_text_keeps_paragraph_breaks(self):
+        """Blank lines are segment boundaries and must survive preprocessing."""
+        raw_text = "First line\nwrapped here.\r\n\r\n\n\nSecond   paragraph."
+        self.assertEqual(preprocess_text(raw_text), "First line wrapped here.\n\nSecond paragraph.")
+
     def test_split_text_intelligently(self):
         """Test intelligent text splitting."""
         text = "First paragraph.\n\nSecond paragraph. This is a long sentence that should be kept together."

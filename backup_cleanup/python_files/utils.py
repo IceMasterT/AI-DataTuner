@@ -18,8 +18,14 @@ def preprocess_text(text: str) -> str:
     Returns:
         Cleaned and normalized text
     """
-    # Remove excessive whitespace
-    text = re.sub(r'\s+', ' ', text.strip())
+    # Normalize whitespace but keep paragraph breaks (blank lines): the splitter
+    # uses them as segment boundaries, and flattening them merges an answer
+    # with the question that follows it.
+    text = text.strip()
+    text = re.sub(r'[ \t\f\v\r]+', ' ', text)
+    text = re.sub(r' ?\n ?', '\n', text)
+    text = re.sub(r'\n{2,}', '\n\n', text)
+    text = re.sub(r'(?<!\n)\n(?!\n)', ' ', text)  # soft line wraps -> space
     
     # Fix common formatting issues
     text = re.sub(r'([.!?])\s*([a-z])', r'\1 \2', text)  # Space after punctuation
