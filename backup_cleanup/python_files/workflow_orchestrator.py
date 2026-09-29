@@ -20,6 +20,7 @@ from queue import Queue, Empty
 from env_config import get_config, EnvironmentConfig
 from pipeline_orchestrator import PipelineOrchestrator, PipelineConfig
 from file_processors import create_file_processor
+from structured_pipeline import is_supported as structured_supported, run_structured_pipeline
 from ai_enhanced_processor import AIEnhancedTextProcessor, ProcessingConfig
 
 
@@ -142,6 +143,15 @@ class WorkflowOrchestrator:
                 enabled=self.config.enable_ai_classification,
                 parallel=self.config.parallel_processing,
                 max_workers=min(self.config.max_workers, 2)  # Limit AI processing workers
+            ),
+            WorkflowStage(
+                name="structured_chunking",
+                input_folder=self.config.input_folder,
+                output_folder=self.config.output_folder,
+                processor_type="structured_chunker",
+                enabled=self.config.enable_structured_chunking,
+                parallel=self.config.parallel_processing,
+                max_workers=self.config.max_workers
             )
         ]
     
@@ -230,15 +240,25 @@ class WorkflowOrchestrator:
                 try:
                     self.logger.info(f"Processing stage: {stage.name}")
                     
-                    # Process file through stage
-                    stage_result = self._process_stage(current_file_path, stage)
+                    # The structured chunker reads the original document (it needs
+                    # page layout), so it branches off the text chain instead of
+                    # consuming the previous stage's output.
+                    is_branch = stage.processor_type == 'structured_chunker'
+                    stage_input = file_path if is_branch else current_file_path
+                    stage_result = self._process_stage(stage_input, stage)
+                    
+                    if stage_result.get('skipped'):
+                        self.logger.info(f"Stage {stage.name} skipped: {stage_result.get('reason')}")
+                        continue
                     
                     if stage_result['success']:
                         result.stages_completed.append(stage.name)
                         result.total_cost += stage_result.get('cost', 0.0)
                         
+                        if is_branch:
+                            temp_files.extend(stage_result.get('output_files', []))
                         # Update current file path for next stage
-                        if stage_result.get('output_files'):
+                        elif stage_result.get('output_files'):
                             current_file_path = Path(stage_result['output_files'][0])
                             temp_files.extend(stage_result['output_files'][1:])
                         
@@ -253,6 +273,17 @@ class WorkflowOrchestrator:
                         
                         self.workflow_stats['stage_stats'][stage.name]['processed'] += 1
                         self.workflow_stats['stage_stats'][stage.name]['total_time'] += stage_time
+                    
+                    elif is_branch:
+                        # A structured-chunking failure must not discard the
+                        # text-chain output; surface it loudly and keep going.
+                        self.logger.error(
+                            f"Stage {stage.name} failed for {file_path}: {stage_result.get('error')}"
+                        )
+                        stats = self.workflow_stats['stage_stats'].setdefault(
+                            stage.name, {'processed': 0, 'failed': 0, 'total_time': 0.0}
+                        )
+                        stats['failed'] += 1
                     
                     else:
                         result.stages_failed.append(stage.name)
@@ -341,6 +372,9 @@ class WorkflowOrchestrator:
                 # AI processing stage
                 result = self._process_ai_enhancement(file_path)
             
+            elif stage.processor_type == 'structured_chunker':
+                result = self._process_structured_chunking(file_path)
+            
             else:
                 result['error'] = f"Unknown processor type: {stage.processor_type}"
         
@@ -380,6 +414,37 @@ class WorkflowOrchestrator:
             
             self.logger.info(f"Extracted {len(text_segments)} segments from {file_path}")
         
+        except Exception as e:
+            result['error'] = str(e)
+        
+        return result
+    
+    def _process_structured_chunking(self, file_path: Path) -> Dict[str, Any]:
+        """Structure-aware chunking: hierarchy-aware chunks, JSONL export, validation report."""
+        if not structured_supported(file_path):
+            return {'success': True, 'skipped': True, 'output_files': [], 'cost': 0.0,
+                    'reason': f"{file_path.suffix or 'this file type'} has no page structure to chunk"}
+        
+        result = {'success': False, 'output_files': [], 'cost': 0.0}
+        try:
+            out_dir = Path(self.config.output_folder) / file_path.stem
+            run = run_structured_pipeline(
+                file_path,
+                out_dir,
+                target_tokens=self.config.structured_target_tokens,
+                max_tokens=self.config.structured_max_tokens,
+            )
+            if not run.chunks:
+                result['error'] = "Structured chunking produced no chunks"
+                return result
+            
+            if not run.validation.is_valid:
+                self.logger.warning(
+                    f"{file_path.name}: validation flagged {run.validation.flagged_chunks_count} chunk(s); "
+                    f"see {out_dir / (file_path.stem + '_validation_report.json')}"
+                )
+            result['success'] = True
+            result['output_files'] = run.output_files
         except Exception as e:
             result['error'] = str(e)
         

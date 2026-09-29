@@ -122,8 +122,9 @@ PDF → Extract blocks → Clean furniture → Build section tree → Chunk with
 | **3. Hierarchy** | `section_hierarchy_builder.py` | Builds a document → section → subsection tree from headings (`Chapter N`, `Step N`, `Part N`, `Module N`, markdown `##`, and font-based headings). The document title comes from a real title page, or from the filename when the PDF has none. |
 | **4. Chunk** | `structured_chunker.py` | Chunks inside a section, never across sections. Splits on paragraph, then sentence boundaries. Keeps numbered lists and labelled tips together. Counts real tokens with `tiktoken` (default target 500, max 800 including context). |
 | **5. Context** | `chunk_context_formatter.py` | Gives every chunk an `embedding_text` with a `Document:` / `Section:` / `Subsection:` prefix so it stands alone at retrieval time. Exports chunks as JSONL with page range, source block IDs and quality flags. |
-| **6. Validate** | `chunk_validator.py` | Before embedding, flags empty bodies, garbled text, detached headings and chunks that mix unrelated sections. Builds a manifest recording whether every source block was included, excluded or held for review. Re-importing a document replaces its old chunks instead of duplicating them. |
-| **7. Evaluate** | `retrieval_evaluator.py` | Benchmarks retrieval on naive chunks vs. structure-aware chunks with the same scorer. |
+| **6. Validate** | `chunk_validator.py` | Before embedding, flags empty bodies, garbled text, detached headings, chunks that mix unrelated sections, and missing numbered steps/chapters/parts/modules. Builds a manifest recording whether every source block was included, excluded or held for review. Re-importing a document replaces its old chunks instead of duplicating them. |
+| **7. Evaluate** | `retrieval_evaluator.py` | Benchmarks retrieval on naive chunks vs. structure-aware chunks with the same scorer, on the built-in sample or on your own file. |
+| *Glue* | `structured_pipeline.py` | One function that runs stages 1-6 and writes the artifacts; used by the workflow orchestrator and the benchmark. |
 
 ### Run it from the command line
 
@@ -136,22 +137,37 @@ python pipeline_cli.py chunk-structured path/to/document.pdf
 # Tune chunk size (tokens)
 python pipeline_cli.py chunk-structured path/to/document.pdf --target-tokens 400 --max-tokens 700
 
-# Benchmark structure-aware vs. naive chunking (built-in synthetic document)
+# Benchmark structure-aware vs. naive chunking on YOUR document
+python pipeline_cli.py evaluate-retrieval --file path/to/document.pdf
+
+# ...or on the built-in synthetic document (quick smoke test)
 python pipeline_cli.py evaluate-retrieval
 python pipeline_cli.py evaluate-retrieval --output-report my_report.json
 ```
+
+With `--file`, the benchmark derives its queries from the document's own sections (each query asks what a section covers; the expected facts are the terms most distinctive to that section), builds a naive fixed-size-character baseline from the same extracted text, and measures noise against the headers/footers actually removed from *your* file. Scores are printed side by side and saved to `--output-report`; a metric that gets worse is reported as "regressed", not glossed over.
 
 `chunk-structured` writes three files to `Phase 2/<document name>/` (change with `--output-dir`):
 
 | File | Contents |
 |------|----------|
 | `<name>_chunks.jsonl` | One chunk per line: `chunk_id`, `section_path`, `embedding_text`, `source_text`, `token_count`, `page_start`, `page_end`, `quality_flags`, `source_block_ids` |
-| `<name>_validation_report.json` | Every issue found, with severity (`error` / `warning`) and sample text |
+| `<name>_validation_report.json` | Every issue found, with severity (`error` / `warning`) and sample text. Includes a completeness check: every numbered unit the document evidences (source headings such as `Chapter 4`, or a count promised by the title such as "Ten Step ...") must appear in the chunks, and gaps in the source's own numbering are flagged |
 | `<name>_source_manifest.json` | The fate of every source block: included, excluded (with reason) or held for review |
 
-When you run the phase-controlled pipeline (the GUI's **Phase Control** tab / `phase_controlled_pipeline.py`), the same stages run automatically: Phase 1 saves `<name>_structure.json` and `<name>_furniture_audit.json` next to the sanitized text, and Phase 2 consumes them to produce the chunk files, JSONL, validation report and manifest. If any structured-pipeline module fails to import, Phase 2 falls back to the original sentence-based chunker and logs a warning; if structured PDF extraction fails, Phase 1 falls back to PyMuPDF text, then PyPDF2, then pdfplumber.
+### Automatic runs
 
-### Phase 2 settings
+**`start` / `process` CLI commands.** The workflow orchestrator has a `structured_chunking` stage. For every PDF, TXT or MD file it runs the full structure-aware pipeline on the original document and writes `output/<name>/<name>_chunks.jsonl`, `_validation_report.json` and `_source_manifest.json`, alongside the existing text/AI stages. Other file types (CSV, JSON) skip the stage. A failure in this stage is logged and counted but never discards the rest of the workflow's output.
+
+| Environment variable | Default | Description |
+|----------------------|---------|-------------|
+| `ENABLE_STRUCTURED_CHUNKING` | `true` | Turn the stage on/off |
+| `STRUCTURED_TARGET_TOKENS` | `500` | Preferred chunk size |
+| `STRUCTURED_MAX_TOKENS` | `800` | Hard ceiling, including the context prefix |
+
+**Phase Control tab.** When you run the phase-controlled pipeline (the GUI's **Phase Control** tab / `phase_controlled_pipeline.py`), the same stages run automatically: Phase 1 saves `<name>_structure.json` and `<name>_furniture_audit.json` next to the sanitized text, and Phase 2 consumes them to produce the chunk files, JSONL, validation report and manifest. If any structured-pipeline module fails to import, Phase 2 falls back to the original sentence-based chunker and logs a warning; if structured PDF extraction fails, Phase 1 falls back to PyMuPDF text, then PyPDF2, then pdfplumber.
+
+### Phase 2 settings (Phase Control tab)
 
 | Setting | Default | Description |
 |---------|---------|-------------|
@@ -164,10 +180,9 @@ When you run the phase-controlled pipeline (the GUI's **Phase Control** tab / `p
 
 ### Known limitations
 
-- `evaluate-retrieval` always runs on the built-in synthetic document. Its `--file` flag is accepted but not yet used, so it can't benchmark your own PDFs.
-- The `start` / `process` CLI commands go through the workflow orchestrator, not the phase-controlled pipeline, so use `chunk-structured` or the Phase Control tab to get structure-aware chunking.
-- The coverage check in `chunk_validator.py` looks for a specific ten-step document layout. It only activates when the text mentions "ten step", and it is a no-op for other documents.
 - Heading detection relies on font size/weight and the `Chapter/Step/Part/Module` patterns. PDFs whose headings are the same size as body text will produce a flat hierarchy.
+- The completeness check only covers numbered units (`Step`, `Chapter`, `Part`, `Module`, as digits or words up to twenty). Documents organised by unnumbered headings get per-chunk checks but no "is anything missing?" check.
+- Benchmark queries derived with `--file` are generated from section titles and vocabulary, so they favour retrieval by topic words. On documents with only a handful of chunks, the top 5 results cover nearly everything and completeness saturates at 100% for both systems; the noise, context and purity metrics are the informative ones there.
 - Scanned PDFs need `pytesseract` (and the Tesseract binary) for the OCR retry; without it, image-only pages yield no text.
 
 ---
@@ -486,7 +501,7 @@ cd backup_cleanup/python_files
 venv/bin/python -m pytest ../test_files -q
 ```
 
-`test_structured_extraction_pipeline.py` covers each stage of the structure-aware pipeline: extraction, furniture cleaning, hierarchy building (including document-title inference), chunking, context formatting, validation and the retrieval benchmark.
+`test_structured_extraction_pipeline.py` covers each stage of the structure-aware pipeline: extraction, furniture cleaning, hierarchy building (including document-title inference), chunking, context formatting, validation and the retrieval benchmark. `test_pipeline_integration.py` covers the wiring: completeness validation for any numbered document, `evaluate-retrieval --file`, and the orchestrator's `structured_chunking` stage on a real generated PDF.
 
 ## More Documentation
 

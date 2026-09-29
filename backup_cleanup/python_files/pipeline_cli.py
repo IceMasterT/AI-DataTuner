@@ -648,12 +648,72 @@ def handle_chunk_structured_command(args):
         return 1
 
 
+def _report_benchmark(report, args):
+    """Print the side-by-side benchmark summary and save the JSON report."""
+    print("\n📊 SIDE-BY-SIDE RETRIEVAL COMPARISON SUMMARY")
+    print("=" * 60)
+    print(f"{'Metric':<30} | {'Baseline (Before)':<20} | {'Structured (After)':<20}")
+    print("-" * 76)
+    print(f"{'Completeness Score':<30} | {format(report.baseline_summary['completeness'], '.1%'):<20} | {format(report.structured_summary['completeness'], '.1%'):<20}")
+    print(f"{'Context Lineage Score':<30} | {format(report.baseline_summary['context_preservation'], '.1%'):<20} | {format(report.structured_summary['context_preservation'], '.1%'):<20}")
+    print(f"{'Noise Freedom Score':<30} | {format(report.baseline_summary['noise_freedom'], '.1%'):<20} | {format(report.structured_summary['noise_freedom'], '.1%'):<20}")
+    print(f"{'Section Purity Score':<30} | {format(report.baseline_summary['section_purity'], '.1%'):<20} | {format(report.structured_summary['section_purity'], '.1%'):<20}")
+    print("=" * 76)
+
+    print("\n✨ Results:")
+    for h in report.improvement_highlights:
+        print(f"  • {h}")
+
+    out_path = Path(args.output_report)
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump(report.to_dict(), f, indent=2)
+    print(f"\n📄 Saved detailed benchmark report to: {out_path.resolve()}")
+    return 0
+
+
+def _run_file_benchmark(file_path, args):
+    """Benchmark naive vs structure-aware chunking on a real document."""
+    from retrieval_evaluator import RetrievalBenchmarkEvaluator
+    from structured_pipeline import run_structured_pipeline
+
+    file_path = Path(file_path)
+    if not file_path.exists():
+        print(f"❌ File not found: {file_path}")
+        return 1
+
+    print(f"📄 Document: {file_path.name}")
+    run = run_structured_pipeline(file_path)
+    print(f"   Structure-aware: {len(run.chunks)} chunks, {len(run.hierarchy.all_sections)} sections, "
+          f"{len(run.cleaning.removed_blocks)} furniture blocks removed")
+
+    # Baseline: the same document's raw text (furniture included), sliced by character count
+    baseline = RetrievalBenchmarkEvaluator.naive_chunk_text(run.document.raw_text)
+    print(f"   Naive baseline:  {len(baseline)} fixed-size chunks")
+
+    cases = RetrievalBenchmarkEvaluator.build_cases_from_hierarchy(run.hierarchy)
+    if not cases:
+        print("❌ Could not derive benchmark queries: no section has enough text.")
+        return 1
+    print(f"   Derived {len(cases)} queries from the document's own sections")
+
+    # Noise = the furniture lines actually removed from this document
+    furniture = sorted({b.text.strip() for b in run.cleaning.removed_blocks if 4 <= len(b.text.strip()) <= 120})
+
+    report = RetrievalBenchmarkEvaluator().evaluate_comparison(
+        baseline, run.chunks, cases=cases, furniture_samples=furniture
+    )
+    return _report_benchmark(report, args)
+
+
 def handle_evaluate_retrieval_command(args):
     """Handle before/after retrieval evaluation benchmark."""
     print("\n🔍 Running Retrieval Evaluation Benchmark (Instruction 7)")
     print("=" * 60)
 
     try:
+        if args.file:
+            return _run_file_benchmark(args.file, args)
+
         from retrieval_evaluator import RetrievalBenchmarkEvaluator
         from structured_chunker import StructuredChunk
         from section_hierarchy_builder import SectionHierarchyBuilder
@@ -725,25 +785,7 @@ def handle_evaluate_retrieval_command(args):
         evaluator = RetrievalBenchmarkEvaluator()
         report = evaluator.evaluate_comparison(raw_chunks_baseline, structured_chunks)
 
-        print("\n📊 SIDE-BY-SIDE RETRIEVAL COMPARISON SUMMARY")
-        print("=" * 60)
-        print(f"{'Metric':<30} | {'Baseline (Before)':<20} | {'Structured (After)':<20}")
-        print("-" * 76)
-        print(f"{'Completeness Score':<30} | {report.baseline_summary['completeness']:<20} | {report.structured_summary['completeness']:<20}")
-        print(f"{'Context Lineage Score':<30} | {report.baseline_summary['context_preservation']:<20} | {report.structured_summary['context_preservation']:<20}")
-        print(f"{'Noise Freedom Score':<30} | {report.baseline_summary['noise_freedom']:<20} | {report.structured_summary['noise_freedom']:<20}")
-        print(f"{'Section Purity Score':<30} | {report.baseline_summary['section_purity']:<20} | {report.structured_summary['section_purity']:<20}")
-        print("=" * 76)
-
-        print("\n✨ Key Improvements:")
-        for h in report.improvement_highlights:
-            print(f"  • {h}")
-
-        out_path = Path(args.output_report)
-        with open(out_path, "w", encoding="utf-8") as f:
-            json.dump(report.to_dict(), f, indent=2)
-        print(f"\n📄 Saved detailed benchmark report to: {out_path.resolve()}")
-        return 0
+        return _report_benchmark(report, args)
 
     except Exception as e:
         print(f"\n❌ Error during retrieval evaluation: {e}")

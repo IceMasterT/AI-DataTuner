@@ -54,6 +54,9 @@ class EnvironmentConfig:
 
     # Security Settings
     enable_security_filtering: bool = True
+    enable_structured_chunking: bool = True
+    structured_target_tokens: int = 500
+    structured_max_tokens: int = 800
     security_level: str = "balanced"  # permissive, balanced, strict, paranoid
     quarantine_enabled: bool = True
 
@@ -300,6 +303,15 @@ class EnvironmentConfigLoader:
             "PARALLEL_PROCESSING", config.parallel_processing
         )
         config.max_workers = self._get_int("MAX_WORKERS", config.max_workers)
+        config.enable_structured_chunking = self._get_bool(
+            "ENABLE_STRUCTURED_CHUNKING", config.enable_structured_chunking
+        )
+        config.structured_target_tokens = self._get_int(
+            "STRUCTURED_TARGET_TOKENS", config.structured_target_tokens
+        )
+        config.structured_max_tokens = self._get_int(
+            "STRUCTURED_MAX_TOKENS", config.structured_max_tokens
+        )
         config.batch_size = self._get_int("BATCH_SIZE", config.batch_size)
         config.processing_interval = self._get_float(
             "PROCESSING_INTERVAL", config.processing_interval
@@ -520,6 +532,8 @@ class EnvironmentConfigLoader:
 
         if config.max_workers <= 0:
             issues.append("MAX_WORKERS must be positive")
+        if config.structured_target_tokens <= 0 or config.structured_max_tokens < config.structured_target_tokens:
+            issues.append("STRUCTURED_MAX_TOKENS must be >= STRUCTURED_TARGET_TOKENS, and both positive")
 
         # Validate security level
         valid_security_levels = ["permissive", "balanced", "strict", "paranoid"]
@@ -624,6 +638,11 @@ ARCHIVE_FOLDER=archive
 OUTPUT_FORMAT=qwen
 PARALLEL_PROCESSING=true
 MAX_WORKERS=4
+
+# Structure-aware chunking for PDF/TXT/MD (section-aware chunks + validation report)
+ENABLE_STRUCTURED_CHUNKING=true
+STRUCTURED_TARGET_TOKENS=500
+STRUCTURED_MAX_TOKENS=800
 BATCH_SIZE=10
 PROCESSING_INTERVAL=5.0
 AUTO_MOVE_FILES=true

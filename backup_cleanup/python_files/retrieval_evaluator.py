@@ -178,12 +178,97 @@ class RetrievalBenchmarkEvaluator:
         "Page 1", "Page 2", "Page 3"
     ]
 
+    _furniture: List[str] = RUNNING_FURNITURE_SAMPLES
+
+    STOPWORDS = frozenset(
+        "the and for that with this from have are was were will your you not but can all any "
+        "their they them then than there these those which what when where how why into out "
+        "about over more most some such also just only very been being has had its our".split()
+    )
+
+    @staticmethod
+    def naive_chunk_text(text: str, size: int = 1000, overlap: int = 100) -> List[Dict[str, Any]]:
+        """Baseline chunker: fixed-size character windows over raw text.
+
+        No cleaning, no section awareness, no context prefix - what a
+        straightforward pipeline would do with the same extracted text.
+        """
+        step = max(1, size - overlap)
+        chunks = []
+        for i, start in enumerate(range(0, len(text), step)):
+            piece = text[start:start + size].strip()
+            if piece:
+                chunks.append({"chunk_id": f"naive_{i:03d}", "text": piece, "embedding_text": piece})
+        return chunks
+
+    @classmethod
+    def build_cases_from_hierarchy(cls, hierarchy: Any, max_cases: int = 6) -> List[Dict[str, Any]]:
+        """Derive benchmark queries from the document's own sections.
+
+        For each content section: the query asks about the section's title, and the
+        expected elements are the terms most distinctive to that section (frequent
+        there, rare in other sections). Sections with no usable terms are skipped.
+        """
+        sections = [
+            sec for sec in hierarchy.all_sections
+            if sec.section_type in ("section", "subsection")
+            and sum(len(b.text) for b in sec.blocks) >= 200
+        ]
+        if not sections:
+            return []
+
+        term_counts: List[Dict[str, int]] = []
+        for sec in sections:
+            counts: Dict[str, int] = {}
+            for w in re.findall(r"[A-Za-z][A-Za-z-]{4,}", " ".join(b.text for b in sec.blocks).lower()):
+                if w not in cls.STOPWORDS:
+                    counts[w] = counts.get(w, 0) + 1
+            term_counts.append(counts)
+
+        n = len(sections)
+        df: Dict[str, int] = {}
+        for counts in term_counts:
+            for w in counts:
+                df[w] = df.get(w, 0) + 1
+
+        cases = []
+        for sec, counts in zip(sections, term_counts):
+            ranked = sorted(counts, key=lambda w: counts[w] * math.log((n + 1) / df[w]), reverse=True)
+            # Terms shared by every section can't discriminate; skip them when possible
+            distinctive = [w for w in ranked if df[w] < n] or ranked
+            expected = distinctive[:4]
+            if len(expected) < 2:
+                continue
+            cases.append({
+                "query": f"What does the section '{sec.title}' cover?",
+                "expected_elements": expected,
+                "target_section": sec.title,
+            })
+
+        # Spread the sample across the document instead of taking only the first sections
+        if len(cases) > max_cases:
+            stride = len(cases) / max_cases
+            cases = [cases[int(i * stride)] for i in range(max_cases)]
+        return cases
+
     def evaluate_comparison(
         self,
         baseline_chunks: List[Dict[str, Any]],
-        structured_chunks: List[StructuredChunk]
+        structured_chunks: List[StructuredChunk],
+        cases: Optional[List[Dict[str, Any]]] = None,
+        furniture_samples: Optional[List[str]] = None,
     ) -> ComparisonReport:
-        """Run benchmark on both baseline and structured chunk sets."""
+        """Run benchmark on both baseline and structured chunk sets.
+
+        `cases` and `furniture_samples` default to the built-in synthetic benchmark;
+        pass document-specific ones to benchmark a real file.
+        """
+        cases = cases if cases is not None else self.BENCHMARK_CASES
+        if not cases:
+            raise ValueError("No benchmark cases: the document has no sections large enough to derive queries from")
+        self._furniture = (
+            furniture_samples if furniture_samples is not None else self.RUNNING_FURNITURE_SAMPLES
+        )
         structured_dict_chunks = [c.to_dict() for c in structured_chunks]
 
         baseline_engine = RetrievalEngine(baseline_chunks)
@@ -192,7 +277,7 @@ class RetrievalBenchmarkEvaluator:
         baseline_reports: List[QueryBenchmarkReport] = []
         structured_reports: List[QueryBenchmarkReport] = []
 
-        for case in self.BENCHMARK_CASES:
+        for case in cases:
             q = case["query"]
             expected = case["expected_elements"]
             target_sec = case["target_section"]
@@ -222,11 +307,15 @@ class RetrievalBenchmarkEvaluator:
         struct_avg_noise = sum(r.noise_freedom_score for r in structured_reports) / len(structured_reports)
         struct_avg_purity = sum(r.section_purity_score for r in structured_reports) / len(structured_reports)
 
+        def _delta(label: str, before: float, after: float) -> str:
+            direction = "improved" if after > before else "regressed" if after < before else "unchanged"
+            return f"{label} {direction}: {before*100:.1f}% -> {after*100:.1f}%."
+
         highlights = [
-            f"Completeness improved from {base_avg_comp*100:.1f}% to {struct_avg_comp*100:.1f}% (Top-5 results retain all tips/steps together).",
-            f"Context lineage score improved from {base_avg_ctx*100:.1f}% to {struct_avg_ctx*100:.1f}% (explicit Document > Section breadcrumbs).",
-            f"Noise freedom improved from {base_avg_noise*100:.1f}% to {struct_avg_noise*100:.1f}% (eliminated running headers and footers).",
-            f"Section boundary purity improved from {base_avg_purity*100:.1f}% to {struct_avg_purity*100:.1f}% (zero cross-step bleeding)."
+            _delta("Completeness (expected facts found in top 5)", base_avg_comp, struct_avg_comp),
+            _delta("Context lineage (Document > Section breadcrumbs)", base_avg_ctx, struct_avg_ctx),
+            _delta("Noise freedom (no running headers/footers)", base_avg_noise, struct_avg_noise),
+            _delta("Section boundary purity (no cross-step bleed)", base_avg_purity, struct_avg_purity),
         ]
 
         detailed = []
@@ -240,7 +329,7 @@ class RetrievalBenchmarkEvaluator:
 
         return ComparisonReport(
             benchmark_timestamp=datetime.now().isoformat(),
-            queries_evaluated=len(self.BENCHMARK_CASES),
+            queries_evaluated=len(cases),
             baseline_summary={
                 "completeness": base_avg_comp,
                 "context_preservation": base_avg_ctx,
@@ -277,7 +366,7 @@ class RetrievalBenchmarkEvaluator:
             sec_path = chunk_data.get("section_path", "")
 
             # Check furniture noise
-            has_noise = any(f.lower() in text.lower() for f in self.RUNNING_FURNITURE_SAMPLES)
+            has_noise = any(f.lower() in text.lower() for f in self._furniture)
             if not has_noise:
                 noise_free_count += 1
 
@@ -286,7 +375,9 @@ class RetrievalBenchmarkEvaluator:
             found_elements_across_top5.update(chunk_elements)
 
             # Check section purity (doesn't mix multiple steps)
-            step_mentions = len(set(re.findall(r'\bStep\s+[0-9A-Za-z]+', text, re.IGNORECASE)))
+            step_mentions = len(set(
+                m.lower() for m in re.findall(r'\b(?:Step|Chapter|Part|Module)\s+[0-9A-Za-z]+', text, re.IGNORECASE)
+            ))
             is_pure = step_mentions <= 1
             if is_pure:
                 pure_count += 1

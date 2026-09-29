@@ -6,7 +6,8 @@ Performs pre-embedding validation:
 - Flags chunks with garbled text, empty bodies, detached headings, or multiple unrelated sections.
 - Tracks source blocks (included, excluded, held for review) so content cannot silently disappear.
 - Ensures reimporting a document replaces previous chunks without duplicates.
-- Validates completeness across all steps/chapters of the source document (e.g. Step 1 through Step 10).
+- Validates completeness across the numbered steps/chapters/parts/modules the document itself evidences
+  (source headings, or a count declared in the title such as "Ten Step ...").
 """
 
 import re
@@ -26,7 +27,7 @@ logger = logging.getLogger(__name__)
 class ValidationIssue:
     """An issue detected during chunk validation."""
     chunk_id: str
-    issue_type: str  # "garbled_text", "empty_body", "detached_heading", "cross_section_leakage", "incomplete_coverage"
+    issue_type: str  # "garbled_text", "empty_body", "detached_heading", "cross_section_leakage", "incomplete_coverage", "numbering_gap"
     severity: str  # "error", "warning"
     message: str
     sample_text: str = ""
@@ -100,10 +101,106 @@ class ValidationReport:
 class ChunkValidator:
     """Validates chunks, audits block manifests, and checks document completeness."""
 
-    EXPECTED_STEPS = [
-        "Step One", "Step Two", "Step Three", "Step Four", "Step Five",
-        "Step Six", "Step Seven", "Step Eight", "Step Nine", "Step Ten"
-    ]
+    # Numbered structural units the document may be organised into
+    UNIT_KINDS = ("Step", "Chapter", "Part", "Module")
+
+    _NUMBER_WORDS = {
+        "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
+        "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13,
+        "fourteen": 14, "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18,
+        "nineteen": 19, "twenty": 20,
+    }
+    _NUMBER_PATTERN = r"\d{1,3}|" + "|".join(_NUMBER_WORDS)
+    _KIND_PATTERN = "|".join(UNIT_KINDS)
+    # "Step 3", "Chapter Four" ...
+    _UNIT_RE = re.compile(rf"\b({_KIND_PATTERN})\s+({_NUMBER_PATTERN})\b", re.IGNORECASE)
+    # A title declaring its own size: "Ten Step Blueprint", "The 7 Chapters of ..."
+    _DECLARED_RE = re.compile(rf"\b({_NUMBER_PATTERN})[\s-]+({_KIND_PATTERN})s?\b", re.IGNORECASE)
+
+    @classmethod
+    def _to_int(cls, token: str) -> int:
+        token = token.lower()
+        return int(token) if token.isdigit() else cls._NUMBER_WORDS[token]
+
+    @classmethod
+    def _units_in(cls, text: str) -> Dict[str, Set[int]]:
+        """Numbered units mentioned in `text`, keyed by kind (Step, Chapter, ...)."""
+        found: Dict[str, Set[int]] = {}
+        for kind, num in cls._UNIT_RE.findall(text):
+            found.setdefault(kind.title(), set()).add(cls._to_int(num))
+        return found
+
+    @classmethod
+    def _declared_units(cls, title_text: str) -> Dict[str, int]:
+        """Unit counts the document title promises (e.g. 'Ten Step ...' -> {'Step': 10})."""
+        return {kind.title(): cls._to_int(num) for num, kind in cls._DECLARED_RE.findall(title_text)}
+
+    def _check_unit_coverage(
+        self,
+        chunks: List[StructuredChunk],
+        extracted_doc: ExtractedDocument,
+    ) -> Tuple[List[str], List[str], List[ValidationIssue]]:
+        """
+        Check that every numbered unit the document itself evidences made it into chunks.
+
+        A unit is expected when the source has a heading for it, or the title declares
+        a count that covers it. Documents with no numbered structure are not checked.
+        """
+        doc_id = extracted_doc.document_id
+        title_text = doc_id.replace("_", " ").replace("-", " ")
+        if chunks:
+            title_text += " " + chunks[0].section_path.split(" > ")[0]
+
+        declared = self._declared_units(title_text)
+
+        source_units: Dict[str, Set[int]] = {}
+        for block in extracted_doc.blocks:
+            first_line = block.text.strip().split("\n")[0]
+            if block.is_heading or self._UNIT_RE.match(first_line):
+                for kind, nums in self._units_in(first_line).items():
+                    source_units.setdefault(kind, set()).update(nums)
+
+        chunk_units = self._units_in(" ".join(c.embedding_text for c in chunks))
+
+        detected: List[str] = []
+        missing: List[str] = []
+        issues: List[ValidationIssue] = []
+
+        for kind in sorted(set(declared) | set(source_units)):
+            expected = set(source_units.get(kind, set()))
+            if kind in declared:
+                expected |= set(range(1, declared[kind] + 1))
+            present = chunk_units.get(kind, set())
+
+            detected.extend(f"{kind} {n}" for n in sorted(expected & present))
+            missing_nums = sorted(expected - present)
+            missing.extend(f"{kind} {n}" for n in missing_nums)
+
+            if missing_nums:
+                basis = (f"title declares {declared[kind]} {kind.lower()}s" if kind in declared
+                         else f"source has {kind.lower()} headings up to {max(source_units[kind])}")
+                issues.append(ValidationIssue(
+                    chunk_id=f"{doc_id}_coverage",
+                    issue_type="incomplete_coverage",
+                    severity="error",
+                    message=(f"Document incomplete ({basis}): missing "
+                             f"{[f'{kind} {n}' for n in missing_nums]}"),
+                    sample_text=f"Found {len(expected & present)} of {len(expected)} expected {kind.lower()}s in chunks"
+                ))
+
+            # Gaps inside the source's own numbering suggest the extractor dropped a heading
+            observed = source_units.get(kind, set())
+            gaps = sorted(set(range(1, max(observed) + 1)) - observed) if observed else []
+            if gaps:
+                issues.append(ValidationIssue(
+                    chunk_id=f"{doc_id}_coverage",
+                    issue_type="numbering_gap",
+                    severity="warning",
+                    message=f"Source {kind.lower()} numbering skips {gaps}; a heading may not have been extracted",
+                    sample_text=""
+                ))
+
+        return detected, missing, issues
 
     def validate_chunks(
         self,
@@ -212,28 +309,9 @@ class ChunkValidator:
             inclusion_rate=inc_rate
         )
 
-        # 3. Check Complete Step Coverage
-        steps_detected = []
-        all_text = " ".join(c.embedding_text for c in chunks)
-        for expected in self.EXPECTED_STEPS:
-            if re.search(r'\b' + re.escape(expected) + r'\b', all_text, re.IGNORECASE):
-                steps_detected.append(expected)
-
-        missing_steps = []
-        # If document claims to be "Ten Step Social Media Strategy Blueprint", check for missing steps
-        if "ten step" in extracted_doc.document_id.lower() or "ten step" in all_text.lower():
-            for exp in self.EXPECTED_STEPS:
-                if exp not in steps_detected:
-                    missing_steps.append(exp)
-
-            if missing_steps:
-                issues.append(ValidationIssue(
-                    chunk_id=f"{extracted_doc.document_id}_coverage",
-                    issue_type="incomplete_coverage",
-                    severity="error",
-                    message=f"Document incomplete: extracted up to {steps_detected[-1] if steps_detected else 'None'}, missing steps: {missing_steps}",
-                    sample_text=f"Detected {len(steps_detected)} of 10 steps"
-                ))
+        # 3. Check numbered-unit coverage (Step/Chapter/Part/Module)
+        steps_detected, missing_steps, coverage_issues = self._check_unit_coverage(chunks, extracted_doc)
+        issues.extend(coverage_issues)
 
         is_valid = len([i for i in issues if i.severity == "error"]) == 0
 
