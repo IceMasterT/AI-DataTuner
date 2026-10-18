@@ -1,0 +1,12 @@
+{
+  "name": "AI Data Pipeline",
+  "short_name": "Data Pipeline",
+  "description": "Remote control for AI Data Pipeline",
+  "display": "standalone",
+  "background_color": "#111827",
+  "theme_color": "#111827",
+  "icons": [
+    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

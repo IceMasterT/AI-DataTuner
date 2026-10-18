@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Data Pipeline</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Data Pipeline">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#111827">
+<meta name="referrer" content="no-referrer">
+<link rel="icon" type="image/png" href="/apple-touch-icon.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<style>
+  :root {
+    --bg: #111827; --panel: #1f2937; --line: #374151; --text: #e5e7eb; --muted: #9ca3af;
+    --accent: #34d399; --accent-ink: #052e1c; --warn: #fbbf24; --bad: #f87171; --cyan: #22d3ee;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; }
+  body { padding: calc(env(safe-area-inset-top) + 16px) calc(env(safe-area-inset-right) + 16px)
+         calc(env(safe-area-inset-bottom) + 32px) calc(env(safe-area-inset-left) + 16px);
+         max-width: 640px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0; letter-spacing: .02em; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+  .pill { font: 600 12px ui-monospace, SFMono-Regular, Menlo, monospace; padding: 5px 10px; border-radius: 999px;
+          border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+  .pill.busy { color: var(--warn); border-color: var(--warn); }
+  .pill.ok   { color: var(--accent); border-color: var(--accent); }
+  .pill.bad  { color: var(--bad); border-color: var(--bad); }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin-bottom: 14px; }
+  h2 { font: 600 12px ui-monospace, SFMono-Regular, Menlo, monospace; text-transform: uppercase;
+       letter-spacing: .12em; color: var(--cyan); margin: 0 0 10px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  button, .filebtn { appearance: none; border: 1px solid var(--line); background: #111827; color: var(--text);
+    border-radius: 10px; min-height: 44px; padding: 0 16px; font: 600 15px inherit; flex: 1 1 140px; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  button:disabled { opacity: .45; }
+  input[type=file] { display: none; }
+  input[type=text], input[type=password] { width: 100%; min-height: 44px; border-radius: 10px; border: 1px solid var(--line);
+    background: #111827; color: var(--text); padding: 0 12px; font: 16px ui-monospace, Menlo, monospace; }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li { display: flex; justify-content: space-between; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); font-size: 14px; }
+  li:first-child { border-top: 0; }
+  li .name { overflow-wrap: anywhere; }
+  li .size { color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  li button { min-height: 36px; flex: 0 0 auto; padding: 0 12px; font-size: 13px; }
+  .empty { color: var(--muted); font-size: 14px; }
+  pre { margin: 0; max-height: 260px; overflow: auto; font: 12px/1.4 ui-monospace, Menlo, monospace;
+        background: #0b1220; border-radius: 10px; padding: 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .msg { min-height: 20px; font-size: 14px; margin-top: 8px; color: var(--muted); }
+  .msg.bad { color: var(--bad); } .msg.ok { color: var(--accent); }
+  #login { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>AI Data Pipeline</h1>
+  <span id="state" class="pill">connecting…</span>
+</header>
+
+<section id="login">
+  <h2>Access token</h2>
+  <p class="empty">Open this page from the link or QR code the computer printed, or paste the token here.</p>
+  <input id="tokenInput" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="token">
+  <div class="row" style="margin-top:10px"><button id="tokenSave" class="primary">Connect</button></div>
+</section>
+
+<div id="app" hidden>
+  <section>
+    <h2>Run</h2>
+    <div class="row">
+      <button id="btnProcess" class="primary">Process input folder</button>
+      <button id="btnHealth">Health check</button>
+      <button id="btnCancel" disabled>Cancel</button>
+    </div>
+    <div id="runMsg" class="msg"></div>
+  </section>
+
+  <section>
+    <h2>Input files</h2>
+    <label class="filebtn" for="fileInput">Upload documents…</label>
+    <input id="fileInput" type="file" multiple accept=".pdf,.txt,.md,.csv,.json,.jsonl">
+    <div id="upMsg" class="msg"></div>
+    <ul id="inputList"></ul>
+  </section>
+
+  <section>
+    <h2>Log</h2>
+    <pre id="log">(no job has run yet)</pre>
+  </section>
+
+  <section>
+    <h2>Results</h2>
+    <ul id="outputList"></ul>
+  </section>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var KEY = "adp_token";
+  var token = "";
+  var $ = function (id) { return document.getElementById(id); };
+
+  function readToken() {
+    var t = new URLSearchParams(location.search).get("t");
+    if (t) { try { localStorage.setItem(KEY, t); } catch (e) {} return t; }
+    try { return localStorage.getItem(KEY) || ""; } catch (e) { return ""; }
+  }
+
+  function api(path, opts) {
+    opts = opts || {};
+    opts.headers = Object.assign({ "Authorization": "Bearer " + token }, opts.headers || {});
+    return fetch(path, opts);
+  }
+
+  function setState(text, cls) { var s = $("state"); s.textContent = text; s.className = "pill " + (cls || ""); }
+  function say(id, text, cls) { var e = $(id); e.textContent = text; e.className = "msg " + (cls || ""); }
+
+  function fmt(n) {
+    if (n < 1024) return n + " B";
+    if (n < 1048576) return (n / 1024).toFixed(1) + " KB";
+    return (n / 1048576).toFixed(1) + " MB";
+  }
+
+  function fillList(id, rows, button) {
+    var ul = $(id); ul.textContent = "";
+    if (!rows.length) { var li = document.createElement("li"); li.className = "empty"; li.textContent = "Nothing here yet."; ul.appendChild(li); return; }
+    rows.forEach(function (r) {
+      var li = document.createElement("li");
+      var name = document.createElement("span"); name.className = "name"; name.textContent = r.path;
+      var size = document.createElement("span"); size.className = "size"; size.textContent = fmt(r.bytes);
+      li.appendChild(name);
+      if (button) {
+        var b = document.createElement("button"); b.textContent = "Download";
+        b.addEventListener("click", function () { download(r.path); });
+        li.appendChild(b);
+      } else { li.appendChild(size); }
+      ul.appendChild(li);
+    });
+  }
+
+  function download(path) {
+    api("/api/download?path=" + encodeURIComponent(path)).then(function (r) {
+      if (!r.ok) throw new Error("download failed");
+      return r.blob();
+    }).then(function (blob) {
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url; a.download = path.split("/").pop();
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 30000);
+    }).catch(function (e) { say("runMsg", e.message, "bad"); });
+  }
+
+  var lastRunning = null;
+
+  function refresh() {
+    return api("/api/status").then(function (r) {
+      if (r.status === 401) { showLogin("That token was not accepted."); throw new Error("auth"); }
+      if (r.status === 429) { setState("locked out", "bad"); throw new Error("rate"); }
+      return r.json();
+    }).then(function (s) {
+      $("login").style.display = "none"; $("app").hidden = false;
+      var busy = !!s.running;
+      $("btnProcess").disabled = busy; $("btnHealth").disabled = busy; $("btnCancel").disabled = !busy;
+      if (busy) setState("running: " + s.running, "busy");
+      else if (s.last_job) setState(s.last_job.name + (s.last_job.exit_code === 0 ? " ok" : " failed (" + s.last_job.exit_code + ")"),
+                                    s.last_job.exit_code === 0 ? "ok" : "bad");
+      else setState("idle", "");
+      fillList("inputList", s.input, false);
+      if (lastRunning !== null && lastRunning && !busy) loadOutputs();
+      lastRunning = busy;
+      return api("/api/log").then(function (r) { return r.text(); }).then(function (t) {
+        var pre = $("log"); var atEnd = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 20;
+        pre.textContent = t || "(no job has run yet)";
+        if (atEnd) pre.scrollTop = pre.scrollHeight;
+      });
+    }).catch(function (e) {
+      if (e.message !== "auth" && e.message !== "rate") setState("offline", "bad");
+    });
+  }
+
+  function loadOutputs() {
+    return api("/api/outputs").then(function (r) { return r.json(); })
+      .then(function (d) { fillList("outputList", d.files, true); }).catch(function () {});
+  }
+
+  function showLogin(msg) {
+    $("app").hidden = true; $("login").style.display = "block";
+    setState("not connected", "bad");
+    if (msg) { var p = $("login").querySelector("p"); p.textContent = msg; }
+  }
+
+  function start(path, label) {
+    say("runMsg", "");
+    api(path, { method: "POST" }).then(function (r) { return r.json().then(function (d) { return [r.status, d]; }); })
+      .then(function (x) {
+        if (x[0] === 202) { say("runMsg", label + " started.", "ok"); refresh(); }
+        else say("runMsg", x[1].error || "Could not start.", "bad");
+      }).catch(function () { say("runMsg", "Could not reach the computer.", "bad"); });
+  }
+
+  function upload(files) {
+    var list = Array.prototype.slice.call(files), done = 0, failed = 0;
+    if (!list.length) return;
+    say("upMsg", "Uploading " + list.length + " file(s)…");
+    list.reduce(function (chain, f) {
+      return chain.then(function () {
+        return api("/api/upload?name=" + encodeURIComponent(f.name), { method: "POST", body: f,
+                   headers: { "Content-Type": "application/octet-stream" } })
+          .then(function (r) { return r.json().then(function (d) { return [r.ok, d]; }); })
+          .then(function (x) { if (x[0]) done++; else { failed++; say("upMsg", f.name + ": " + (x[1].error || "failed"), "bad"); } })
+          .catch(function () { failed++; say("upMsg", f.name + ": connection lost", "bad"); });
+      });
+    }, Promise.resolve()).then(function () {
+      if (!failed) say("upMsg", done + " file(s) uploaded.", "ok");
+      $("fileInput").value = ""; refresh();
+    });
+  }
+
+  $("btnProcess").addEventListener("click", function () { start("/api/process", "Processing"); });
+  $("btnHealth").addEventListener("click", function () { start("/api/health", "Health check"); });
+  $("btnCancel").addEventListener("click", function () {
+    api("/api/cancel", { method: "POST" }).then(function () { refresh(); });
+  });
+  $("fileInput").addEventListener("change", function (e) { upload(e.target.files); });
+  $("tokenSave").addEventListener("click", function () {
+    token = $("tokenInput").value.trim();
+    try { localStorage.setItem(KEY, token); } catch (e) {}
+    refresh().then(loadOutputs);
+  });
+
+  token = readToken();
+  if (!token) { showLogin(); } else { refresh().then(loadOutputs); }
+  setInterval(function () { if (token && !document.hidden) refresh(); }, 2500);
+})();
+</script>
+</body>
+</html>

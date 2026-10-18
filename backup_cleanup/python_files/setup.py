@@ -79,35 +79,21 @@ def create_windows_launchers(script_dir: Path) -> bool:
         bat_path = launchers_dir / "AI-Data-Pipeline.bat"
         ps1_path = launchers_dir / "AI-Data-Pipeline.ps1"
 
-        bat_content = f"""@echo off
-setlocal
-set SCRIPT_DIR={script_dir}
-set PY_BIN=%SCRIPT_DIR%\\venv\\Scripts\\python.exe
-if not exist "%PY_BIN%" set PY_BIN=python
-set RUNNER=%SCRIPT_DIR%\\run_pipeline.bat
-if exist "%RUNNER%" (
-  call "%RUNNER%" %*
-) else (
-  "%PY_BIN%" "%SCRIPT_DIR%\\operational_health_check.py" --init-folders --smoke
-  if errorlevel 1 exit /b 1
-  "%PY_BIN%" "%SCRIPT_DIR%\\unified_pipeline_gui.py"
-)
-endlocal
-"""
-        bat_path.write_text(bat_content, encoding="utf-8")
+        # Paths are relative to the launcher so the folder can be moved (never bake in this machine's path).
+        bat_content = (
+            "@echo off\r\n"
+            "setlocal\r\n"
+            'set "SCRIPT_DIR=%~dp0..\\.."\r\n'
+            'call "%SCRIPT_DIR%\\run_pipeline.bat" %*\r\n'
+            "endlocal\r\n"
+        )
+        bat_path.write_bytes(bat_content.encode("utf-8"))
 
-        ps1_content = f"""$ScriptDir = "{script_dir}"
-$PyBin = Join-Path $ScriptDir "venv\\Scripts\\python.exe"
-if (-Not (Test-Path $PyBin)) {{ $PyBin = "python" }}
-$Runner = Join-Path $ScriptDir "run_pipeline.bat"
-if (Test-Path $Runner) {{
-    & $Runner @args
-}} else {{
-    & $PyBin (Join-Path $ScriptDir "operational_health_check.py") --init-folders --smoke
-    if ($LASTEXITCODE -ne 0) {{ exit $LASTEXITCODE }}
-    & $PyBin (Join-Path $ScriptDir "unified_pipeline_gui.py")
-}}
-"""
+        ps1_content = (
+            "$ScriptDir = (Resolve-Path (Join-Path $PSScriptRoot '..\\..')).Path\n"
+            "& (Join-Path $ScriptDir 'run_pipeline.bat') @args\n"
+            "exit $LASTEXITCODE\n"
+        )
         ps1_path.write_text(ps1_content, encoding="utf-8")
 
         print(f"✅ Windows launcher assets created: {launchers_dir}")

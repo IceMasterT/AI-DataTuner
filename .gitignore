@@ -82,3 +82,7 @@ sessions/
 
 # Written by the test suite when run from python_files/
 backup_cleanup/python_files/custom_personalities.json
+
+# iOS remote access token (secret)
+backup_cleanup/python_files/ios_remote/.token
+backup_cleanup/python_files/launchers/ios/ai-data-pipeline-remote.service

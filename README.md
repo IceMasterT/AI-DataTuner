@@ -208,6 +208,40 @@ This single command will:
 2. Install all dependencies (including PyMuPDF and tiktoken)
 3. Create desktop launcher and app menu shortcuts
 
+### Install on Windows
+
+1. Install [Python 3.10+](https://www.python.org/downloads/) if you don't have it (tick **Add python.exe to PATH** and keep **tcl/tk** selected; or `winget install Python.Python.3.12`).
+2. Double-click **`Install-Windows.bat`** in the repository root.
+
+It finds Python, creates a virtual environment next to the code, installs the dependencies, and adds an **AI Data Pipeline** icon to your Desktop and Start Menu. Nothing is installed system-wide and your PowerShell execution policy is not changed.
+
+Options (PowerShell, from `backup_cleanup\python_files`):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File install_windows.ps1 -Minimal       # skip the PDF-structure dependencies
+powershell -ExecutionPolicy Bypass -File install_windows.ps1 -NoDesktop     # Start Menu shortcut only
+powershell -ExecutionPolicy Bypass -File install_windows.ps1 -DryRun        # show the plan, change nothing
+powershell -ExecutionPolicy Bypass -File install_windows.ps1 -Uninstall     # remove the shortcuts (-RemoveVenv for the venv too)
+```
+
+### Install on iPhone / iPad
+
+iOS can't run the desktop app, so the installer sets up a **Home Screen app** that remotely controls the computer running the pipeline: upload documents, start a run, watch the log, download results.
+
+```bash
+python3 backup_cleanup/python_files/install_app.py --only ios      # one-time: creates your private access token
+backup_cleanup/python_files/launchers/ios/start_ios_remote.sh      # Windows: ...\start_ios_remote.bat
+```
+
+It prints a link and a QR code. Scan it with the iPhone camera, open it in **Safari**, then **Share → Add to Home Screen**.
+
+- **Tailscale (recommended):** if the computer and phone are on Tailscale, the remote binds to the Tailscale address automatically, so the connection is encrypted and works away from home.
+- **Home Wi-Fi only:** pass `--host <the computer's LAN IP>`. That is plain HTTP, so use it on a network you trust.
+- Never port-forward it to the internet. Every request needs the token, and the server can only run the two fixed commands (process the input folder, health check); uploads are limited by type (PDF/TXT/MD/CSV/JSON/JSONL) and size (100 MB) and can't overwrite or escape the input folder.
+- Rotate the token (signs out every installed icon): `python ios_remote_server.py --new-token --show-url`.
+
+Details and an optional start-at-login unit: `backup_cleanup/python_files/launchers/ios/INSTALL_IOS_APP.md`.
+
 ### Launch the Application
 
 After installation, you have several options:
@@ -501,7 +535,7 @@ cd backup_cleanup/python_files
 venv/bin/python -m pytest ../test_files -q
 ```
 
-`test_structured_extraction_pipeline.py` covers each stage of the structure-aware pipeline: extraction, furniture cleaning, hierarchy building (including document-title inference), chunking, context formatting, validation and the retrieval benchmark. `test_pipeline_integration.py` covers the wiring: completeness validation for any numbered document, `evaluate-retrieval --file`, and the orchestrator's `structured_chunking` stage on a real generated PDF.
+`test_structured_extraction_pipeline.py` covers each stage of the structure-aware pipeline: extraction, furniture cleaning, hierarchy building (including document-title inference), chunking, context formatting, validation and the retrieval benchmark. `test_installers.py` and `test_ios_remote.py` cover the Windows/iOS installers and the iOS remote server (auth, upload/download safety, job control). `test_pipeline_integration.py` covers the wiring: completeness validation for any numbered document, `evaluate-retrieval --file`, and the orchestrator's `structured_chunking` stage on a real generated PDF.
 
 ## More Documentation
 
