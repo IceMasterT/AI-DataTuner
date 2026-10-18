@@ -1,137 +1,280 @@
+<p align="center">
+  <img src="docs/images/banner.svg" alt="AI Data Pipeline - raw documents in, clean fine-tuning data out" width="100%">
+</p>
+
+<p align="center">
+  <img alt="Python 3.10+" src="https://img.shields.io/badge/python-3.10%2B-3776ab?logo=python&logoColor=white">
+  <img alt="Platforms" src="https://img.shields.io/badge/platforms-Linux%20%C2%B7%20macOS%20%C2%B7%20Windows%20%C2%B7%20iOS%20remote-34d399">
+  <img alt="Local first" src="https://img.shields.io/badge/runs%20locally-Ollama%20%C2%B7%20LM%20Studio-22d3ee">
+  <img alt="License" src="https://img.shields.io/badge/license-MIT%20%2B%20Commons%20Clause-a78bfa">
+</p>
+
 # AI Data Pipeline
 
-A production-ready desktop application for transforming raw documents into high-quality, model-specific training data for large language models.
+**A desktop application that turns raw documents (PDF, CSV, JSON, JSONL, TXT, Markdown) into clean, validated, model-specific training data for large language models.**
 
-## What Does This Do?
+You point it at a folder of messy files. It sanitizes them, splits them into sensible chunks, optionally rewrites them in a chosen voice, formats them for your target model (ChatGPT, Qwen, Llama, Alpaca, ChatML and more), and scores the result. Every step writes to its own folder, so you can inspect, stop, or re-run any stage.
 
-AI Data Pipeline takes your raw documents (PDF, CSV, JSON, TXT, Markdown) and converts them into formatted training data ready for fine-tuning AI models. Think of it as a "data cleaning and formatting factory" - you feed it messy documents, and it outputs clean, properly formatted training examples.
-
-PDFs get special treatment. Instead of flattening a PDF into one blob of text and slicing it every N characters, the pipeline reads the page layout, strips repeated headers and footers, rebuilds the document's section tree, and chunks **inside** sections so every chunk is a complete thought that carries its own breadcrumb (`Document > Section > Subsection`). See [Structure-Aware PDF Processing](#structure-aware-pdf-processing).
-
-### Use Cases
-
-| Use Case | Description |
-|----------|-------------|
-| **Fine-tune ChatGPT** | Convert documents into OpenAI's JSONL format for ChatGPT fine-tuning |
-| **Train Custom Models** | Create training data for Llama, Qwen, Mistral, and other open models |
-| **Add Personality** | Apply consistent tone and personality to your training data |
-| **Data Cleaning** | Sanitize documents by removing malware, fixing encoding, normalizing text |
-| **RAG / Retrieval Prep** | Produce self-contained, section-aware chunks with source metadata, ready to embed |
-
-### The Pipeline Flow
-
-```
-Raw Documents → Phase 1 (Sanitize + Extract Structure) → Phase 2 (Structure-Aware Chunk + Validate) → Phase 3 (Personality + Format) → Phase 4 (Quality Check) → Training Data
-```
-
-```mermaid
-flowchart TD
-    A[Start Operator Runbook] --> B[Open terminal]
-    B --> C["cd /media/artiq/DATA/AI Data Pipeline/backup_cleanup/python_files"]
-    C --> D["./go_live.sh --check-only"]
-    D --> E{Check-only passed?}
-
-    E -- No --> F[Stop<br/>Do not run production]
-    E -- Yes --> G["./go_live.sh"]
-
-    G --> H[Pick provider mode]
-
-    H --> I[Free local mode<br/>OPENAI_PROVIDER=ollama<br/>OLLAMA_BASE_URL=http://127.0.0.1:11434/v1<br/>OPENAI_MODEL=qwen2.5:7b]
-    H --> J[OpenAI cloud mode<br/>OPENAI_PROVIDER=openai<br/>OPENAI_API_KEY=REAL_KEY<br/>OPENAI_MODEL=gpt-4o]
-    H --> K[OpenRouter cloud mode<br/>OPENAI_PROVIDER=openrouter<br/>OPENROUTER_API_KEY=REAL_KEY<br/>OPENROUTER_BASE_URL=https://openrouter.ai/api/v1<br/>OPENAI_MODEL=openrouter/auto]
-    H --> L[LM Studio local mode<br/>OPENAI_PROVIDER=lmstudio<br/>LMSTUDIO_BASE_URL=http://127.0.0.1:1234/v1<br/>OPENAI_MODEL=local-model]
-
-    I --> M[Use default phase chain]
-    J --> M
-    K --> M
-    L --> M
-
-    M --> N[input]
-    N --> O[Phase 1]
-    O --> P[Phase 2]
-    P --> Q[Phase 3]
-    Q --> R[Phase 4]
-
-    R --> S[Common GUI workflow]
-    S --> S1[Open app]
-    S1 --> S2[AI Settings: choose provider preset]
-    S2 --> S3[Processing: choose output format]
-    S3 --> S4[Use GPT JSONL for ChatGPT fine-tuning]
-    S4 --> S5[Phases: verify required phases enabled]
-    S5 --> S6[Start pipeline]
-
-    S6 --> T{Need ChatGPT fine-tuning output?}
-    T -- Yes --> U[Set Phase 3 target to openai or gpt_jsonl]
-    U --> V["Record format:<br/>{messages:[{role:user,content:...},{role:assistant,content:...}]}"]
-    V --> W[Combined dataset file: chatgpt_training.jsonl]
-    T -- No --> X[Continue normal processing]
-
-    W --> Y[Run health checks if needed]
-    X --> Y
-
-    Y --> Y1["./run_pipeline.sh --health-only --smoke"]
-    Y --> Y2["./run_pipeline.sh --health-only --smoke --strict"]
-    Y2 --> Z{Strict health check passed?}
-
-    Z -- Yes --> AA[Production gate passed]
-    Z -- No --> AB[Failure response]
-
-    AB --> AB1{Failure type}
-    AB1 -- Creds --> AB2[Verify provider env vars and real keys]
-    AB1 -- Deps --> AB3["Run: python3 setup.py --install-type full --yes"]
-    AB1 -- Local provider --> AB4[Confirm Ollama or LM Studio is running and endpoint is reachable]
-
-    AA --> AC[Apply security rules]
-    AB2 --> AC
-    AB3 --> AC
-    AB4 --> AC
-
-    AC --> AC1[Never place real keys in tracked files]
-    AC1 --> AC2[Use environment variables only]
-    AC2 --> AC3[Rotate keys immediately if exposed]
-
-    AC3 --> AD[Optional launcher shortcuts]
-    AD --> AD1["python3 install_app.py"]
-    AD --> AD2[Linux desktop icon: ~/Desktop/AI Data Pipeline.desktop]
-    AD --> AD3[Linux command: ~/.local/bin/ai-data-pipeline-launcher]
-    AD --> AD4[Windows scripts: backup_cleanup/python_files/run_pipeline.bat]
-    AD --> AD5[iOS guide: backup_cleanup/python_files/launchers/ios/IOS_LAUNCHER_SETUP.md]
-
-    F --> AE[End]
-    AD1 --> AE
-    AD2 --> AE
-    AD3 --> AE
-    AD4 --> AE
-    AD5 --> AE
-```
+PDFs get special treatment. Rather than flattening a PDF into one blob and slicing it every N characters, the pipeline reads the page layout, removes repeated headers and footers, rebuilds the section tree, and chunks **inside** sections, so each chunk is a complete thought that carries its own `Document > Section > Subsection` breadcrumb.
 
 ---
 
-## Structure-Aware PDF Processing
+## Table of contents
 
-Naive PDF chunking fails in predictable ways: running headers and page numbers end up inside chunks, a list of four tips gets cut in half, and a chunk retrieved on its own has no idea which chapter it came from. The structure-aware pipeline fixes each of these.
+1. [What it does](#what-it-does)
+2. [The four-phase pipeline](#the-four-phase-pipeline)
+3. [Quick start](#quick-start)
+4. [Installation](#installation) (Linux/macOS, Windows, iPhone/iPad)
+5. [A tour of the desktop app](#a-tour-of-the-desktop-app)
+6. [Structure-aware PDF processing](#structure-aware-pdf-processing)
+7. [Output formats](#output-formats)
+8. [Security and sanitization](#security-and-sanitization)
+9. [Personalities](#personalities)
+10. [AI providers and cost control](#ai-providers-and-cost-control)
+11. [The Ten Pillars quality system](#the-ten-pillars-quality-system)
+12. [Command-line reference](#command-line-reference)
+13. [Configuration reference](#configuration-reference)
+14. [iPhone / iPad remote](#iphone--ipad-remote)
+15. [Project layout and architecture](#project-layout-and-architecture)
+16. [Testing](#testing)
+17. [Troubleshooting](#troubleshooting)
+18. [Known limitations](#known-limitations)
+19. [More documentation](#more-documentation)
+20. [License](#license)
+
+---
+
+## What it does
+
+| You want to... | How the pipeline helps |
+|----------------|------------------------|
+| **Fine-tune ChatGPT** | Writes OpenAI chat-format JSONL (`{"messages": [...]}`), plus a combined `chatgpt_training.jsonl` |
+| **Train open models** (Llama, Qwen, Mistral, Zephyr...) | Ten conversation formats, selectable per run |
+| **Give training data a consistent voice** | Personality templates with an adjustable strength, plus custom personalities |
+| **Clean untrusted documents** | Unicode normalization, invisible-character and bidirectional-override removal, homoglyph and entropy checks, quarantine of suspicious files |
+| **Prepare data for RAG / retrieval** | Self-contained, section-aware chunks with page ranges, source-block IDs and quality flags, ready to embed |
+| **Keep costs near zero** | Runs end to end against local models (Ollama, LM Studio) with a $0 daily limit |
+| **Operate it from your phone** | A Home Screen web app that uploads files, starts runs and streams the log |
+
+**Inputs:** `.pdf` `.csv` `.json` `.jsonl` `.txt` `.md`  **Outputs:** training JSONL/text in any of 10 formats, plus validation reports and audit trails.
+
+---
+
+## The four-phase pipeline
+
+<p align="center">
+  <img src="docs/images/pipeline-overview.svg" alt="Four phases: sanitize and extract, chunk and validate, voice and format, quality scoring" width="100%">
+</p>
+
+Each phase reads one folder and writes the next. The folder chain is configurable (**Folders** tab); the defaults are:
 
 ```
-PDF → Extract blocks → Clean furniture → Build section tree → Chunk within sections → Add context → Validate → JSONL
+input/  ->  Phase 1/  ->  Phase 2/  ->  Phase 3/  ->  Phase 4/
 ```
+
+| Phase | Name | What happens | Output folder |
+|-------|------|--------------|---------------|
+| **1** | Input parsing and sanitization | Parses each file, normalizes Unicode, removes invisible characters, runs the threat scan. For PDFs it also extracts layout structure and removes page furniture (saves `<name>_structure.json` and `<name>_furniture_audit.json`) | `Phase 1/` |
+| **2** | Chunking and fact extraction | Builds the section hierarchy, chunks within sections at paragraph/sentence boundaries, adds context prefixes, and validates every chunk | `Phase 2/` |
+| **3** | Personality prompting and formatting | Optional tone/personality transformation, then formats each example for the chosen target model | `Phase 3/` |
+| **4** | Quality scoring and assessment | LLM-scored sample, filtering and a report | `Phase 4/` |
+
+**Each phase is a toggle** ("red light / green light"). Turn Phase 3 off and the pipeline stops after chunking; turn Phase 4 off to skip scoring and its API cost. Toggle state lives in `config/pipeline_phases.json`.
+
+---
+
+## Quick start
+
+```bash
+# 1. Install (Linux/macOS)
+cd backup_cleanup/python_files
+python3 setup.py --install-type full --yes
+
+# 2. Check the install is healthy (no API key needed)
+./run_pipeline.sh --health-only --smoke
+
+# 3. Launch the app
+./go_live.sh
+```
+
+Then in the app:
+
+1. **Main Control** -> **Browse** to your folder of documents -> **Scan Files**
+2. **Processing** -> pick an output format (use **GPT JSONL** for ChatGPT fine-tuning)
+3. **AI Settings** -> pick a provider (choose **Ollama** or **LM Studio** to stay free)
+4. **Phase Control** -> confirm which phases are green
+5. **Main Control** -> **START PIPELINE**
+
+No GUI? Run headless: `python pipeline_cli.py process --folder input` (see [Command-line reference](#command-line-reference)).
+
+---
+
+## Installation
+
+### Requirements
+
+- Python **3.10+** with Tk (`python3-tk` on Debian/Ubuntu; included in the Windows and macOS installers from python.org)
+- 4 GB RAM minimum, 8 GB recommended
+- For structure-aware PDF processing: `pymupdf` and `tiktoken` (installed automatically). `pdfplumber` and `PyPDF2` serve as fallbacks.
+- Optional: `pytesseract` plus the Tesseract binary for scanned PDFs
+- Optional: an OpenAI or OpenRouter key. Not needed for local models.
+
+### Linux / macOS
+
+```bash
+cd backup_cleanup/python_files
+python3 setup.py --install-type full --yes
+```
+
+This creates a virtual environment, installs the dependencies, and (on Linux) creates a desktop launcher and app-menu shortcut. To (re)create launchers on their own:
+
+```bash
+python3 install_app.py              # desktop + app menu launchers
+python3 install_app.py --only ios   # just the iPhone/iPad remote setup
+```
+
+Launch any time with the desktop icon, `~/.local/bin/ai-data-pipeline-launcher`, or `./go_live.sh`.
+
+### Windows
+
+1. Install [Python 3.10+](https://www.python.org/downloads/) (tick **Add python.exe to PATH** and keep **tcl/tk** selected; or `winget install Python.Python.3.12`).
+2. Double-click **`Install-Windows.bat`** in the repository root.
+
+The installer (`backup_cleanup/python_files/install_windows.ps1`) finds Python, creates a virtual environment next to the code, installs the dependencies, and adds an **AI Data Pipeline** icon to your Desktop and Start Menu. Nothing is installed system-wide and your PowerShell execution policy is not changed.
+
+```powershell
+# from backup_cleanup\python_files
+powershell -ExecutionPolicy Bypass -File install_windows.ps1 -Minimal     # skip the PDF-structure dependencies
+powershell -ExecutionPolicy Bypass -File install_windows.ps1 -NoDesktop   # Start Menu shortcut only
+powershell -ExecutionPolicy Bypass -File install_windows.ps1 -DryRun      # show the plan, change nothing
+powershell -ExecutionPolicy Bypass -File install_windows.ps1 -Uninstall   # remove shortcuts (-RemoveVenv for the venv too)
+```
+
+> **Tested vs. untested:** the installer logic is covered by automated tests that run on Linux (including a dry run under PowerShell). It has **not** been run on a physical Windows machine.
+
+### iPhone / iPad
+
+iOS cannot run the desktop app, so the "iOS installer" sets up a **remote control**: a Home Screen web app that drives the computer running the pipeline. See [iPhone / iPad remote](#iphone--ipad-remote).
+
+---
+
+## A tour of the desktop app
+
+The app (`unified_pipeline_gui.py`, Tkinter) has nine tabs. The screenshots below are the real application.
+
+### Main Control
+
+<p align="center"><img src="docs/images/gui-main.png" alt="Main Control tab" width="100%"></p>
+
+The command center. Pick the input folder, scan for files, then start, pause, resume or abort a run.
+
+| Control | Description |
+|---------|-------------|
+| **Input Folder / Browse / Scan Files** | Choose a folder and list the supported files found in it |
+| **START PIPELINE** | Runs the enabled phases over the listed files |
+| **Pause / Resume / Abort** | Control a running job |
+| **Save Config** | Persist current settings |
+| **View Results / Open Output** | Open the output folders |
+| **Status line** | Files processed, cost so far, elapsed time |
+
+### Phase Control
+
+<p align="center"><img src="docs/images/gui-phases.png" alt="Phase Control tab" width="100%"></p>
+
+Red light / green light control for each phase. **Toggle** enables or disables a phase; **Settings** opens that phase's options (for Phase 2: `target_tokens` default 500 and `max_chunk_tokens` default 800). A data-flow diagram shows the folder chain.
+
+### AI Settings
+
+<p align="center"><img src="docs/images/gui-ai.png" alt="AI Settings tab" width="100%"></p>
+
+| Setting | Description |
+|---------|-------------|
+| **Provider** | OpenAI, OpenRouter, LM Studio or Ollama |
+| **API Key / Show / Test** | Key entry (masked by default) and a connection test |
+| **Provider Endpoint** | Custom base URL, auto-filled per provider |
+| **Model** | e.g. `gpt-4o`, `qwen2.5:7b`, `llama3.1:8b` |
+| **Provider Presets** | One-click OpenAI / OpenRouter / LM Studio / Ollama setup |
+| **Free Cost Mode** | Applies the Ollama + `qwen2.5:7b` preset with a $0/day limit |
+| **Daily Cost Limit** | Hard budget for the day |
+| **AI Classification / Content Enhancement** | Toggle the AI-powered stages |
+| **Cost Tracking** | Per-call spend log with **Refresh Costs** |
+
+### Personality
+
+<p align="center"><img src="docs/images/gui-personality.png" alt="Personality tab" width="100%"></p>
+
+Choose a profile, set its **Strength** (0.1 subtle to 1.0 strong), or write a custom personality and **Preview** it before running Phase 3. Details in [Personalities](#personalities).
+
+### Security
+
+<p align="center"><img src="docs/images/gui-security.png" alt="Security tab" width="100%"></p>
+
+Pick a security level (Strict / Balanced / Permissive) and toggle individual checks. The log pane shows what was detected and what action was taken. Details in [Security and sanitization](#security-and-sanitization).
+
+### Processing
+
+<p align="center"><img src="docs/images/gui-processing.png" alt="Processing tab" width="100%"></p>
+
+Choose the output format, **Parallel Workers** (1-8, default 4) and **Batch Size** (1-50, default 10). Lower the worker count if you run out of memory.
+
+> The Processing tab's radio buttons show six of the ten supported formats; the other four (Zephyr, Instruct, Claude, Minimalist) are available through the `format_templates` module and the CLI/orchestrator paths. See [Output formats](#output-formats).
+
+### Folders, Monitoring and Ten Pillars
+
+- **Folders**: set the input folder and each phase's output folder, with live file counts and sizes (**Refresh Status**, **Open Folder**, **Clean Folder**).
+- **Monitoring**: real-time logs, per-phase results, system status (memory/CPU) and statistics.
+- **Ten Pillars**: status and details for the [data-quality system](#the-ten-pillars-quality-system).
+
+---
+
+## Structure-aware PDF processing
+
+Naive PDF chunking fails in predictable ways: running headers and page numbers end up inside chunks, a list of four tips gets cut in half, and a chunk retrieved on its own has no idea which chapter it came from.
+
+<p align="center">
+  <img src="docs/images/chunking-compare.svg" alt="Naive fixed-size chunking splits a tip list across three chunks and embeds headers and footers; structure-aware chunking keeps it in one chunk with a breadcrumb" width="100%">
+</p>
+
+> The figure is an **illustration** of the failure modes the pipeline targets, not output from a specific real document.
+
+The structure-aware pipeline fixes each of these with seven stages:
+
+<p align="center">
+  <img src="docs/images/structure-aware.svg" alt="Seven stages: extract, clean, hierarchy, chunk, context, validate, evaluate" width="100%">
+</p>
 
 | Stage | Module (`backup_cleanup/python_files/`) | What it does |
-|-------|-----------------------------------------|--------------|
-| **1. Extract** | `document_structure_extractor.py` | Reads PDFs with PyMuPDF and keeps each block's page, coordinates, font size, boldness and reading order. Classifies headings by font size and weight. Detects garbled text (broken spacing, encoding junk) and retries the page with alternate layout settings or OCR. Never guesses words with an LLM. |
-| **2. Clean** | `furniture_cleaner.py` | Removes repeated running headers/footers and standalone page numbers, using position on the page plus repetition across pages. Tags table-of-contents, author-bio and promotional blocks so they can be kept out of training text. Every removal is written to an audit log - nothing disappears silently. |
-| **3. Hierarchy** | `section_hierarchy_builder.py` | Builds a document → section → subsection tree from headings (`Chapter N`, `Step N`, `Part N`, `Module N`, markdown `##`, and font-based headings). The document title comes from a real title page, or from the filename when the PDF has none. |
-| **4. Chunk** | `structured_chunker.py` | Chunks inside a section, never across sections. Splits on paragraph, then sentence boundaries. Keeps numbered lists and labelled tips together. Counts real tokens with `tiktoken` (default target 500, max 800 including context). |
-| **5. Context** | `chunk_context_formatter.py` | Gives every chunk an `embedding_text` with a `Document:` / `Section:` / `Subsection:` prefix so it stands alone at retrieval time. Exports chunks as JSONL with page range, source block IDs and quality flags. |
+|-------|------------------------------------------|--------------|
+| **1. Extract** | `document_structure_extractor.py` | Reads PDFs with PyMuPDF and keeps every block's page, coordinates, font size, boldness and reading order. Classifies headings by font size and weight. Detects garbled text (broken spacing, encoding junk) and retries the page with alternate layout settings or OCR. It never "fixes" words with an LLM. |
+| **2. Clean** | `furniture_cleaner.py` | Removes repeated running headers/footers and standalone page numbers using page position plus repetition across pages. Tags table-of-contents, author-bio and promotional blocks so they can be kept out of training text. Every removal is written to an audit log; nothing disappears silently. |
+| **3. Hierarchy** | `section_hierarchy_builder.py` | Builds a document -> section -> subsection tree from headings (`Chapter N`, `Step N`, `Part N`, `Module N`, Markdown `##`, and font-based headings). The title comes from a real title page, or from the filename when the PDF has none. |
+| **4. Chunk** | `structured_chunker.py` | Chunks inside a section, never across sections. Splits on paragraph, then sentence boundaries. Keeps numbered lists and labelled tips together. Counts real tokens with `tiktoken` (default target 500, maximum 800 including context). |
+| **5. Context** | `chunk_context_formatter.py` | Gives every chunk an `embedding_text` with a `Document:` / `Section:` / `Subsection:` prefix so it stands alone at retrieval time. Exports JSONL with page range, source block IDs and quality flags. |
 | **6. Validate** | `chunk_validator.py` | Before embedding, flags empty bodies, garbled text, detached headings, chunks that mix unrelated sections, and missing numbered steps/chapters/parts/modules. Builds a manifest recording whether every source block was included, excluded or held for review. Re-importing a document replaces its old chunks instead of duplicating them. |
-| **7. Evaluate** | `retrieval_evaluator.py` | Benchmarks retrieval on naive chunks vs. structure-aware chunks with the same scorer, on the built-in sample or on your own file. |
-| *Glue* | `structured_pipeline.py` | One function that runs stages 1-6 and writes the artifacts; used by the workflow orchestrator and the benchmark. |
+| **7. Evaluate** | `retrieval_evaluator.py` | Benchmarks retrieval on naive vs. structure-aware chunks with the same scorer, on a built-in sample or your own file. |
+| *Glue* | `structured_pipeline.py` | One function that runs stages 1-6 and writes the artifacts; used by the orchestrator and the benchmark. |
 
-### Run it from the command line
+### A chunk, concretely
+
+Each line of `<name>_chunks.jsonl` is one chunk:
+
+| Field | Meaning |
+|-------|---------|
+| `chunk_id` | Stable identifier |
+| `section_path` | `Document > Section > Subsection` |
+| `embedding_text` | Breadcrumb prefix + body: what you embed |
+| `source_text` | The body alone: what you quote |
+| `token_count` | Real `tiktoken` count |
+| `page_start`, `page_end` | Where it came from |
+| `quality_flags` | Any validator findings |
+| `source_block_ids` | Exact source blocks, for traceability |
+
+### Run it
 
 ```bash
 cd backup_cleanup/python_files
 
-# Chunk one document (PDF, TXT or MD) with the structure-aware pipeline
+# Chunk one document (PDF, TXT or MD)
 python pipeline_cli.py chunk-structured path/to/document.pdf
 
 # Tune chunk size (tokens)
@@ -145,340 +288,102 @@ python pipeline_cli.py evaluate-retrieval
 python pipeline_cli.py evaluate-retrieval --output-report my_report.json
 ```
 
-With `--file`, the benchmark derives its queries from the document's own sections (each query asks what a section covers; the expected facts are the terms most distinctive to that section), builds a naive fixed-size-character baseline from the same extracted text, and measures noise against the headers/footers actually removed from *your* file. Scores are printed side by side and saved to `--output-report`; a metric that gets worse is reported as "regressed", not glossed over.
-
-`chunk-structured` writes three files to `Phase 2/<document name>/` (change with `--output-dir`):
+`chunk-structured` writes to `Phase 2/<document name>/` (override with `--output-dir`):
 
 | File | Contents |
 |------|----------|
-| `<name>_chunks.jsonl` | One chunk per line: `chunk_id`, `section_path`, `embedding_text`, `source_text`, `token_count`, `page_start`, `page_end`, `quality_flags`, `source_block_ids` |
-| `<name>_validation_report.json` | Every issue found, with severity (`error` / `warning`) and sample text. Includes a completeness check: every numbered unit the document evidences (source headings such as `Chapter 4`, or a count promised by the title such as "Ten Step ...") must appear in the chunks, and gaps in the source's own numbering are flagged |
+| `<name>_chunks.jsonl` | The chunks (fields above) |
+| `<name>_validation_report.json` | Every issue found, with severity (`error` / `warning`) and sample text. Includes a completeness check: every numbered unit the document evidences (headings like `Chapter 4`, or a count promised by the title such as "Ten Step ...") must appear in the chunks, and gaps in the source's own numbering are flagged |
 | `<name>_source_manifest.json` | The fate of every source block: included, excluded (with reason) or held for review |
 
-### Automatic runs
+### Where it runs automatically
 
-**`start` / `process` CLI commands.** The workflow orchestrator has a `structured_chunking` stage. For every PDF, TXT or MD file it runs the full structure-aware pipeline on the original document and writes `output/<name>/<name>_chunks.jsonl`, `_validation_report.json` and `_source_manifest.json`, alongside the existing text/AI stages. Other file types (CSV, JSON) skip the stage. A failure in this stage is logged and counted but never discards the rest of the workflow's output.
+- **`start` / `process` CLI commands:** the workflow orchestrator has a `structured_chunking` stage that runs on every PDF, TXT and MD file, writing `output/<name>/<name>_chunks.jsonl`, `_validation_report.json` and `_source_manifest.json` beside the existing text/AI stages. CSV and JSON skip it. A failure in this stage is logged and counted but never discards the rest of the workflow's output.
+- **Phase Control / GUI:** Phase 1 saves `_structure.json` and `_furniture_audit.json`; Phase 2 consumes them to produce the chunk files. If any structured-pipeline module fails to import, Phase 2 falls back to the original sentence-based chunker and logs a warning. If structured PDF extraction fails, Phase 1 falls back to PyMuPDF text, then PyPDF2, then pdfplumber.
 
-| Environment variable | Default | Description |
-|----------------------|---------|-------------|
-| `ENABLE_STRUCTURED_CHUNKING` | `true` | Turn the stage on/off |
-| `STRUCTURED_TARGET_TOKENS` | `500` | Preferred chunk size |
-| `STRUCTURED_MAX_TOKENS` | `800` | Hard ceiling, including the context prefix |
+### Benchmark
 
-**Phase Control tab.** When you run the phase-controlled pipeline (the GUI's **Phase Control** tab / `phase_controlled_pipeline.py`), the same stages run automatically: Phase 1 saves `<name>_structure.json` and `<name>_furniture_audit.json` next to the sanitized text, and Phase 2 consumes them to produce the chunk files, JSONL, validation report and manifest. If any structured-pipeline module fails to import, Phase 2 falls back to the original sentence-based chunker and logs a warning; if structured PDF extraction fails, Phase 1 falls back to PyMuPDF text, then PyPDF2, then pdfplumber.
+<p align="center">
+  <img src="docs/images/benchmark.svg" alt="Retrieval benchmark: naive vs structure-aware on completeness, context lineage, noise freedom and section purity" width="100%">
+</p>
 
-### Phase 2 settings (Phase Control tab)
+The numbers above come from `retrieval_comparison_report.json` in the repository root. **This is a synthetic smoke test: two queries against a small generated document.** It shows the pipeline behaves as designed (no header/footer noise, intact tip lists, breadcrumbs present). It is **not** evidence of a particular improvement on your data. Run `evaluate-retrieval --file your.pdf` for a measurement on a real document.
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `target_tokens` | 500 | Preferred chunk size |
-| `max_chunk_tokens` | 800 | Hard ceiling, including the context prefix |
-
-### About the benchmark
-
-`retrieval_comparison_report.json` in the repo root compares naive and structure-aware chunking on two queries against a small synthetic document. It shows the approach behaves as designed (no header/footer noise, intact tip lists, breadcrumbs present), but two queries on a synthetic file is a smoke test, not proof of real-world gains.
-
-### Known limitations
-
-- Heading detection relies on font size/weight and the `Chapter/Step/Part/Module` patterns. PDFs whose headings are the same size as body text will produce a flat hierarchy.
-- The completeness check only covers numbered units (`Step`, `Chapter`, `Part`, `Module`, as digits or words up to twenty). Documents organised by unnumbered headings get per-chunk checks but no "is anything missing?" check.
-- Benchmark queries derived with `--file` are generated from section titles and vocabulary, so they favour retrieval by topic words. On documents with only a handful of chunks, the top 5 results cover nearly everything and completeness saturates at 100% for both systems; the noise, context and purity metrics are the informative ones there.
-- Scanned PDFs need `pytesseract` (and the Tesseract binary) for the OCR retry; without it, image-only pages yield no text.
+With `--file`, the benchmark derives queries from the document's own sections (each asks what a section covers; the expected facts are the terms most distinctive to that section), builds a fixed-size-character baseline from the same extracted text, and measures noise against the headers/footers actually removed from *your* file. A metric that gets worse is reported as "regressed", not glossed over.
 
 ---
 
-## Installation
+## Output formats
 
-### Prerequisites
+Ten conversation formats are implemented in `format_templates.py` (`ConversationFormat`):
 
-- Python 3.10 or higher
-- 4GB RAM minimum (8GB recommended)
-- For structure-aware PDF processing: `pymupdf` and `tiktoken` (installed automatically by `setup.py` / `requirements.txt`; `pdfplumber` and `PyPDF2` are used as fallbacks)
-- Optional: API key for OpenAI/OpenRouter (not required for local models)
+| Format | Typical target | Shape |
+|--------|----------------|-------|
+| `qwen` | Qwen models | `<\|user\|>prompt<\|assistant\|>response` |
+| `alpaca` | Alpaca-style instruction tuning | `### Instruction` / `### Response` blocks |
+| `chatml` | ChatML-based models | `<\|im_start\|>user ... <\|im_end\|>` |
+| `sharegpt` | ShareGPT datasets | `{"conversations": [...]}` |
+| `llama2` | Llama 2 | `[INST] prompt [/INST] response` |
+| `zephyr` | Zephyr-style chat templates | role-tagged chat template |
+| `instruct` | Generic instruction format | instruction / response pair |
+| `openai` | ChatGPT fine-tuning | `{"messages":[{"role":"user",...},{"role":"assistant",...}]}` |
+| `claude` | Claude-style human/assistant turns | role-tagged turns |
+| `minimalist` | Lightweight prompt/response | plain pair |
 
-### Quick Install (Linux/macOS)
-
-```bash
-cd /path/to/AI-Data-Pipeline/backup_cleanup/python_files
-python3 setup.py --install-type full --yes
-```
-
-This single command will:
-1. Create a virtual environment
-2. Install all dependencies (including PyMuPDF and tiktoken)
-3. Create desktop launcher and app menu shortcuts
-
-### Install on Windows
-
-1. Install [Python 3.10+](https://www.python.org/downloads/) if you don't have it (tick **Add python.exe to PATH** and keep **tcl/tk** selected; or `winget install Python.Python.3.12`).
-2. Double-click **`Install-Windows.bat`** in the repository root.
-
-It finds Python, creates a virtual environment next to the code, installs the dependencies, and adds an **AI Data Pipeline** icon to your Desktop and Start Menu. Nothing is installed system-wide and your PowerShell execution policy is not changed.
-
-Options (PowerShell, from `backup_cleanup\python_files`):
-
-```powershell
-powershell -ExecutionPolicy Bypass -File install_windows.ps1 -Minimal       # skip the PDF-structure dependencies
-powershell -ExecutionPolicy Bypass -File install_windows.ps1 -NoDesktop     # Start Menu shortcut only
-powershell -ExecutionPolicy Bypass -File install_windows.ps1 -DryRun        # show the plan, change nothing
-powershell -ExecutionPolicy Bypass -File install_windows.ps1 -Uninstall     # remove the shortcuts (-RemoveVenv for the venv too)
-```
-
-### Install on iPhone / iPad
-
-iOS can't run the desktop app, so the installer sets up a **Home Screen app** that remotely controls the computer running the pipeline: upload documents, start a run, watch the log, download results.
-
-```bash
-python3 backup_cleanup/python_files/install_app.py --only ios      # one-time: creates your private access token
-backup_cleanup/python_files/launchers/ios/start_ios_remote.sh      # Windows: ...\start_ios_remote.bat
-```
-
-It prints a link and a QR code. Scan it with the iPhone camera, open it in **Safari**, then **Share → Add to Home Screen**.
-
-- **Tailscale (recommended):** if the computer and phone are on Tailscale, the remote binds to the Tailscale address automatically, so the connection is encrypted and works away from home.
-- **Home Wi-Fi only:** pass `--host <the computer's LAN IP>`. That is plain HTTP, so use it on a network you trust.
-- Never port-forward it to the internet. Every request needs the token, and the server can only run the two fixed commands (process the input folder, health check); uploads are limited by type (PDF/TXT/MD/CSV/JSON/JSONL) and size (100 MB) and can't overwrite or escape the input folder.
-- Rotate the token (signs out every installed icon): `python ios_remote_server.py --new-token --show-url`.
-
-Details and an optional start-at-login unit: `backup_cleanup/python_files/launchers/ios/INSTALL_IOS_APP.md`.
-
-### Launch the Application
-
-After installation, you have several options:
-
-```bash
-# Option 1: Use the desktop launcher (if created)
-# Double-click "AI Data Pipeline" on your desktop
-
-# Option 2: Use command line
-~/.local/bin/ai-data-pipeline-launcher
-
-# Option 3: Run directly
-cd /path/to/AI-Data-Pipeline/backup_cleanup/python_files
-./go_live.sh
-```
----
-**Gist RUNBOOK.md (also in root)**
-[Gist Runbook and Operation Guide](https://gist.github.com/IceMasterT/281c0f2e008d25d21d3798b07fefb0f9)
----
-
-## Quick Start Guide
-
-### Step 1: Select Your Files
-
-1. Launch the application
-2. Go to the **Main Control** tab
-3. Click **Browse** to select your input folder containing PDF, CSV, JSON, TXT, or MD files
-4. Click **Scan Files** to see what was found
-
-### Step 2: Choose Output Format
-
-1. Go to the **Processing** tab
-2. Select your target format:
-   - **Qwen** - For Qwen models
-   - **Alpaca** - For Alpaca-style training
-   - **ChatML** - For ChatML-based models
-   - **Llama2** - For Llama 2 models
-   - **GPT JSONL** - For ChatGPT fine-tuning
-   - **ShareGPT** - For ShareGPT format
-
-### Step 3: Configure AI (Optional)
-
-If you want AI-powered features (personality injection, content enhancement):
-
-1. Go to the **AI Settings** tab
-2. Choose your provider:
-   - **OpenAI** - Uses GPT-4o (requires API key)
-   - **OpenRouter** - Access multiple models through one API
-   - **LM Studio** - Run models locally on your computer
-   - **Ollama** - Free local inference (no API key needed)
-3. Set your daily cost limit (default: $15/day)
-
-### Step 4: Set Personality (Optional)
-
-To add a consistent personality or tone to your training data:
-
-1. Go to the **Personality** tab
-2. Enable "Personality Modifier"
-3. Choose a profile: Professional, Casual, Technical, Creative, Friendly, Formal, Humorous, Educational, or Conversational
-4. Adjust the **Strength** slider (0.1 = subtle, 1.0 = strong transformation)
-
-### Step 5: Run the Pipeline
-
-1. Go to the **Main Control** tab
-2. Click **🚀 START PIPELINE**
-3. Watch progress in the status bar and Monitoring tab
+For **ChatGPT fine-tuning**, choose **GPT JSONL** in the Processing tab (or set the Phase 3 target to `openai`/`gpt_jsonl`). Phase 3 then writes one file per document plus a combined `chatgpt_training.jsonl`.
 
 ---
 
-## GUI Tab Reference
+## Security and sanitization
 
-The application has 9 tabs, each serving a specific purpose:
+Phase 1 treats every input as untrusted. The Security tab controls three levels (**Strict**, **Balanced** (recommended), **Permissive**) and these checks:
 
-### 🚀 Main Control Tab
+| Check | What it catches |
+|-------|-----------------|
+| **Unicode normalization** | Inconsistent encodings, compatibility characters |
+| **Invisible character removal** | Zero-width and control characters that hide content |
+| **RTL/LTR override detection** | Bidirectional-control tricks that make text read differently from how it is stored |
+| **Entropy analysis** | Blocks that look encrypted, encoded or otherwise hidden |
+| **Homoglyph detection** | Lookalike characters from other scripts used to disguise words |
+| **Malformed markup validation** | Broken or hostile HTML/XML-style markup |
 
-The command center for running your pipeline.
+Suspicious files are routed to a quarantine store (`quarantine_system.py`) instead of silently continuing, and every event appears in the **Security Logs** pane. Relevant modules: `sanitization_engine.py`, `quarantine_system.py`, `security_config.py`.
 
-| Setting | Description |
-|---------|-------------|
-| **Input Folder** | Location of your raw documents (PDF, CSV, JSON, TXT, MD) |
-| **Files to Process** | List of detected files ready for processing |
-| **START PIPELINE** | Begins the full pipeline execution |
-| **Pause/Resume** | Temporarily stop or continue processing |
-| **Abort** | Cancel processing entirely |
-| **Save Config** | Save current settings for future use |
-| **View Results** | Open the output folder with processed files |
-| **Progress Bar** | Visual indicator of overall pipeline progress |
-
-### 🎛️ Phase Control Tab
-
-Fine-grained control over each processing stage.
-
-| Phase | Description |
-|-------|-------------|
-| **Phase 1: Sanitization** | Cleans text: removes malware, fixes encoding, normalizes Unicode, removes invisible characters. For PDFs, also extracts layout structure and removes page furniture (saved as `_structure.json` and `_furniture_audit.json`) |
-| **Phase 2: Chunking** | Structure-aware chunking: builds the section hierarchy, chunks within sections at paragraph/sentence boundaries, adds context prefixes, and validates every chunk before it moves on |
-| **Phase 3: Personality** | Applies tone/personality transformation and formats for target model |
-| **Phase 4: Quality** | Validates output quality, scores examples, filters low-quality content |
-
-Each phase can be **enabled/disabled** individually using the Toggle button. Click the ⚙️ button to configure phase-specific settings.
-
-### 🤖 AI Settings Tab
-
-Configure AI providers and cost controls.
-
-| Setting | Description |
-|---------|-------------|
-| **Provider** | AI service to use: OpenAI, OpenRouter, LM Studio, or Ollama |
-| **API Key** | Your authentication key (hidden by default, click "Show" to reveal) |
-| **Provider Endpoint** | Custom API URL (auto-filled based on provider) |
-| **Model** | Specific model to use (e.g., gpt-4o, llama3.1:8b, qwen2.5:7b) |
-| **Daily Cost Limit** | Maximum spending per day (set to $0 for free local models) |
-| **Provider Presets** | One-click configuration buttons for each provider |
-| **Free Cost Mode** | Uses Ollama + qwen2.5:7b (completely free, runs locally) |
-| **Enable AI Classification** | Use AI to categorize content during processing |
-| **Enable Content Enhancement** | Use AI to improve content quality |
-
-### 🎭 Personality Tab
-
-Control the tone and style of your training data.
-
-| Setting | Description |
-|---------|-------------|
-| **Enable Personality Modifier** | Turn personality transformation on/off |
-| **Profile** | Pre-defined personality templates:
-  - *Neutral* - No transformation
-  - *Casual* - Conversational, relaxed tone
-  - *Professional* - Formal, business-appropriate
-  - *Technical* - Precise, technical language
-  - *Creative* - Imaginative, varied expression
-  - *Friendly* - Warm, approachable
-  - *Formal* - Traditional, respectful
-  - *Humorous* - Light, witty tone
-  - *Educational* - Clear, instructive
-  - *Conversational* - Natural dialogue style |
-| **Strength** | How strongly to apply the personality (0.1 = subtle, 1.0 = strong) |
-| **Custom Personality** | Write your own personality description for unique tone requirements |
-
-### 🛡️ Security Tab
-
-Data validation and sanitization options.
-
-| Setting | Description |
-|---------|-------------|
-| **Enable Security Filtering** | Turn security checks on/off |
-| **Security Level** | 
-  - *Strict* - Maximum filtering, catches everything suspicious
-  - *Balanced* - Recommended level
-  - *Permissive* - Minimal filtering |
-| **Security Features** | Individual toggles for:
-  - Unicode Normalization
-  - Invisible Character Removal
-  - RTL/LTR Override Detection
-  - Entropy Analysis (detects encrypted/hidden content)
-  - Homoglyph Detection (lookalike character attacks)
-  - Malformed Markup Validation |
-| **Security Logs** | View all security events and actions taken |
-
-### 📁 Folders Tab
-
-Manage where files are stored at each stage.
-
-| Setting | Description |
-|---------|-------------|
-| **Input Folder** | Original raw documents |
-| **Phase 1 Output** | Cleaned/sanitized files |
-| **Phase 2 Output** | Chunk files, `_chunks.jsonl`, validation report and source manifest |
-| **Phase 3 Output** | Personality-transformed files |
-| **Phase 4 Output** | Final quality-checked files (your training data) |
-
-The pipeline automatically passes files from one folder to the next. Click **Refresh Status** to see file counts and folder sizes.
-
-### ⚙️ Processing Tab
-
-Configure output format and performance settings.
-
-| Setting | Description |
-|---------|-------------|
-| **Output Format** | Target model format (Qwen, Alpaca, ChatML, Llama2, ShareGPT, GPT JSONL) |
-| **Parallel Workers** | Number of files to process simultaneously (1-8, default: 4) |
-| **Batch Size** | Documents processed per AI batch (1-50, default: 10) |
-
-### 📊 Monitoring Tab
-
-Real-time visibility into pipeline operation.
-
-| Tab | Description |
-|-----|-------------|
-| **Real-time Logs** | Live scroll of all pipeline events |
-| **Phase Results** | Summary of each phase's output |
-| **System Status** | Memory, CPU, and system information |
-| **Statistics** | Files processed, time elapsed, costs incurred |
-
-### 🏛️ Ten Pillars Tab (Advanced)
-
-Enterprise-grade quality enforcement system.
-
-| Feature | Description |
-|---------|-------------|
-| **Data Contract Validation** | Ensures output meets strict schema requirements |
-| **Multi-layer Filtering** | Progressive quality gates |
-| **Disciplined Prompting** | Consistent AI prompt templates |
-| **Uniform Formatting** | Standardized output structure |
-| **Iterative Quality Scoring** | Multiple passes to ensure quality |
-| **Enhanced Accuracy** | 95% accuracy target enforcement |
-| **Strict Prompting** | Tight prompt control for consistency |
+> Sanitization reduces risk in training data; it is not a malware scanner for the files themselves. Open untrusted documents with care.
 
 ---
 
-## Supported File Formats
+## Personalities
 
-### Input Formats
-- PDF (`.pdf`)
-- CSV (`.csv`)
-- JSON (`.json`)
-- JSONL (`.jsonl`)
-- Plain text (`.txt`)
-- Markdown (`.md`)
+Phase 3 can rewrite training examples in a consistent voice (`personality_modifier.py`).
 
-### Output Formats
+| Profile | Voice |
+|---------|-------|
+| Neutral | No transformation |
+| Professional | Formal, business-appropriate |
+| Casual | Conversational, relaxed |
+| Technical | Precise, technical language |
+| Creative | Imaginative, varied |
+| Friendly | Warm, approachable |
+| Formal | Traditional, respectful |
+| Humorous | Light, witty |
+| Educational | Clear, instructive |
+| Conversational | Natural dialogue |
 
-| Format | Use Case | Example |
-|--------|----------|---------|
-| **Qwen** | Qwen model fine-tuning | `<\|user\|>prompt<\|assistant\|>response` |
-| **Alpaca** | Alpaca-style training | `### Instruction\n...\n### Response\n...` |
-| **ChatML** | ChatML-based models | `<\|im_start\|>user\n...<\|im_end\|>` |
-| **Llama2** | Llama 2 fine-tuning | `[INST]prompt[/INST] response` |
-| **ShareGPT** | ShareGPT datasets | `{"conversations": [...]}` |
-| **GPT JSONL** | ChatGPT fine-tuning | `{"messages":[{"role":"user","content":"..."}...]}` |
+**Strength** runs from 0.1 (subtle) to 1.0 (strong). **Custom personalities** let you describe a style in your own words, preview it, and save it. Saved ones are stored in `custom_personalities.json` (git-ignored, because it is user data). See [`docs/CUSTOM_PERSONALITIES_README.md`](docs/CUSTOM_PERSONALITIES_README.md).
+
+Personality rewriting uses your configured AI provider, so it incurs cost on cloud models and is free on local ones.
 
 ---
 
-## API Configuration
+## AI providers and cost control
 
-### Environment Variables
-
-Set these before running (or configure in the GUI):
+| Provider | Needs a key | Cost | Typical model |
+|----------|-------------|------|---------------|
+| **OpenAI** | Yes | Paid | `gpt-4o` |
+| **OpenRouter** | Yes | Paid | `openrouter/auto` |
+| **Ollama** | No | Free (local) | `qwen2.5:7b` |
+| **LM Studio** | No | Free (local) | `local-model` |
 
 ```bash
 # OpenAI
@@ -486,76 +391,237 @@ export OPENAI_PROVIDER=openai
 export OPENAI_API_KEY="your-key-here"
 export OPENAI_MODEL="gpt-4o"
 
-# OpenRouter (multiple models, one key)
+# OpenRouter (many models, one key)
 export OPENAI_PROVIDER=openrouter
 export OPENROUTER_API_KEY="your-key-here"
+export OPENROUTER_BASE_URL="https://openrouter.ai/api/v1"
 export OPENAI_MODEL="openrouter/auto"
-
-# LM Studio (local, no key)
-export OPENAI_PROVIDER=lmstudio
-export LMSTUDIO_BASE_URL="http://127.0.0.1:1234/v1"
 
 # Ollama (local, no key)
 export OPENAI_PROVIDER=ollama
 export OLLAMA_BASE_URL="http://127.0.0.1:11434/v1"
 export OPENAI_MODEL="qwen2.5:7b"
+
+# LM Studio (local, no key)
+export OPENAI_PROVIDER=lmstudio
+export LMSTUDIO_BASE_URL="http://127.0.0.1:1234/v1"
+export OPENAI_MODEL="local-model"
 ```
 
----
+**Cost controls.** A **Daily Cost Limit** caps spend (the GUI default is $20; set it to $0 for local models), **Cost Tracking** logs every call, and **Free Cost Mode** applies the Ollama preset in one click. Phase 4 is the largest AI consumer, so toggle it off while experimenting.
 
-## Troubleshooting
-
-### Common Issues
-
-| Problem | Solution |
-|---------|----------|
-| GUI won't start | Run `./go_live.sh` from terminal to see error messages |
-| API key not working | Ensure environment variable is set, or enter in GUI AI Settings tab |
-| Local model won't connect | Make sure LM Studio or Ollama is running before starting pipeline |
-| Out of memory | Reduce "Parallel Workers" in Processing tab to 1-2 |
-| Files not processing | Check input folder contains valid file types (PDF, CSV, JSON, TXT, MD) |
-| `ModuleNotFoundError: pymupdf` / `tiktoken` | Install into the project venv: `pip install -r requirements.txt` (or `uv pip install --python venv/bin/python -r requirements.txt`) |
-| Log says "Structured pipeline import error" | A structured-pipeline module or dependency is missing; Phase 2 is using the basic chunker. Fix the import, then re-run |
-| Log says "Structured PDF extraction failed, falling back" | The PDF couldn't be parsed with layout data (encrypted or corrupt?). Text is still extracted via PyMuPDF/PyPDF2, but without headings or furniture removal |
-| Validation report shows `garbled_text` | The PDF's text layer is broken. Try an OCR'd copy, or install `pytesseract` + Tesseract so the pipeline can retry the page with OCR |
-| Section paths look flat or wrong | The PDF's headings weren't detected. Check `<name>_structure.json` for `is_heading` flags |
-
-### Getting Help
-
-1. Check the **Monitoring** tab for detailed error messages
-2. Review **Security Logs** in the Security tab
-3. Run with reduced parallelism to see clearer error output
+**Key hygiene.** Use environment variables only, never put real keys in tracked files, and rotate a key immediately if it is exposed.
 
 ---
 
-## Running the Tests
+## The Ten Pillars quality system
+
+An optional layer of data-quality machinery (`ten_pillars_integration.py`, `data_contract.py`, and related modules) with its own GUI tab. Its pillars include a data contract (immutable schema), multi-layer filtering (pre-ingestion, semantic, deduplication, policy), disciplined prompting, uniform formatting, and iterative quality scoring with a minimum threshold.
+
+Please read the following honestly:
+
+- **Eight of the ten pillars are implemented.** The module's docstring says "all 10"; the Ten Pillars tab and status text show "10/10" and "95% accuracy enforced". Treat those labels as aspirational, not as a verified guarantee.
+- The per-metric figures that the tab displays (for example factuality and fluency percentages) are **static display values, not measurements of your data**.
+- Use the validation reports and the retrieval benchmark for evidence about your outputs.
+
+---
+
+## Command-line reference
+
+All commands run from `backup_cleanup/python_files` via `python pipeline_cli.py <command>`.
+
+| Command | Purpose | Key options |
+|---------|---------|-------------|
+| `start` | Run the full pipeline with file monitoring | `--no-monitor`, `--process-existing`, `--daemon` |
+| `process` | Process a folder once and exit | `--folder` (default `input`), `--parallel`, `--report FILE` |
+| `process-file FILE` | Process a single file | `--stage {extract,filter,enhance,all}`, `--output` |
+| `monitor` | Watch a folder only | `--folder`, `--interval` (seconds, default 2.0) |
+| `status` | Show pipeline status | `--detailed`, `--json` |
+| `config` | Manage configuration | `--create-env`, `--validate`, `--show`, `--test-openai` |
+| `cleanup` | Tidy folders | `--archive-old`, `--clear-cache`, `--clear-logs`, `--days N` (default 30) |
+| `stats` | Processing statistics | `--period {today,week,month}`, `--export FILE` |
+| `chunk-structured FILE` | Structure-aware chunking | `--output-dir`, `--target-tokens`, `--max-tokens` |
+| `evaluate-retrieval` | Naive vs. structured benchmark | `--file`, `--output-report` |
+
+Launcher scripts:
+
+| Script | Purpose |
+|--------|---------|
+| `./go_live.sh` | Runs the strict health check, then launches the app. `--check-only` stops after the check |
+| `./run_pipeline.sh` | General launcher: `--setup full`, `--health-only`, `--smoke`, `--strict` |
+| `run_pipeline.bat` | Windows launcher |
+
+Typical health checks:
+
+```bash
+./run_pipeline.sh --health-only --smoke            # folders, dependencies, synthetic smoke flow
+./run_pipeline.sh --health-only --smoke --strict   # also fails if credentials/dependencies are missing
+```
+
+If the strict check fails: verify provider environment variables and real keys (credentials), run `python3 setup.py --install-type full --yes` (dependencies), or confirm Ollama/LM Studio is running and reachable (local provider).
+
+---
+
+## Configuration reference
+
+**Structured chunking** (orchestrator stage):
+
+| Environment variable | Default | Description |
+|----------------------|---------|-------------|
+| `ENABLE_STRUCTURED_CHUNKING` | `true` | Turn the stage on/off |
+| `STRUCTURED_TARGET_TOKENS` | `500` | Preferred chunk size |
+| `STRUCTURED_MAX_TOKENS` | `800` | Hard ceiling, including the context prefix |
+
+**Providers:** `OPENAI_PROVIDER`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENROUTER_API_KEY`, `OPENROUTER_BASE_URL`, `OLLAMA_BASE_URL`, `LMSTUDIO_BASE_URL` (see [AI providers](#ai-providers-and-cost-control)).
+
+**Files:**
+
+| File | Purpose |
+|------|---------|
+| `config/pipeline_phases.json` | Phase toggles and per-phase settings (rewritten by the GUI) |
+| `custom_personalities.json` | Your saved personalities (git-ignored) |
+| `ios_remote/.token` | The iOS remote's private access token (owner-only; never commit) |
+
+---
+
+## iPhone / iPad remote
+
+<p align="center"><img src="docs/images/ios-remote.png" alt="The iOS remote: idle on the left, a running job with live log on the right" width="60%"></p>
+
+A small web app served by the computer that runs the pipeline. Add it to your Home Screen and it behaves like a native app: upload documents, start a run, watch the log, download results.
+
+```bash
+cd backup_cleanup/python_files
+python3 install_app.py --only ios        # one-time: creates your private access token
+launchers/ios/start_ios_remote.sh        # Windows: launchers\ios\start_ios_remote.bat
+```
+
+It prints a link and a QR code. Scan with the iPhone camera, open in **Safari**, then **Share -> Add to Home Screen**.
+
+**How it is protected**
+
+- **Token required.** Every request needs a bearer token (compared in constant time); repeated failures from a client trigger a lockout.
+- **Fixed commands only.** The server can run exactly two jobs: process the input folder, and run the health check. There is no shell access.
+- **Safe uploads.** Limited by type (PDF/TXT/MD/CSV/JSON/JSONL) and size (100 MB). Uploads cannot overwrite existing files, escape the input folder, or create hidden files.
+- **Encrypted path by default.** If Tailscale is present the server binds to the Tailscale address, so traffic is encrypted and works away from home. Otherwise it binds to `127.0.0.1`. For home Wi-Fi pass `--host <LAN IP>`; that is plain HTTP, so use a network you trust.
+- **Never port-forward it to the internet.**
+
+| Option | Effect |
+|--------|--------|
+| `--host ADDRESS` | Address to bind |
+| `--port N` | Port (default `8765`) |
+| `--show-url` | Print the access URL and QR, then exit |
+| `--new-token` | Invalidate the old token and create a new one (signs out every installed icon) |
+
+An optional start-at-login unit is provided at `backup_cleanup/python_files/launchers/ios/ai-data-pipeline-remote.service`; the full guide is `launchers/ios/INSTALL_IOS_APP.md`.
+
+> **Tested vs. untested:** the server and its web UI are covered by automated tests and were exercised in a desktop browser with a phone-sized viewport. It has **not** been tried on a physical iPhone or iPad.
+
+---
+
+## Project layout and architecture
+
+<p align="center">
+  <img src="docs/images/architecture.svg" alt="Architecture: interfaces, orchestration, processing engines, providers and files" width="100%">
+</p>
+
+```
+AI-DataTuner-master/
+├── README.md                      this file
+├── RUNBOOK.md                     operator guide
+├── Install-Windows.bat            Windows one-click installer
+├── config/                        phase toggles and settings
+├── docs/                          extra guides and README images
+├── input/  Phase 1/ ... Phase 4/  the folder chain
+├── retrieval_comparison_report.json   synthetic benchmark output
+├── backup_cleanup/
+│   ├── python_files/              application code
+│   │   ├── unified_pipeline_gui.py        desktop GUI (9 tabs)
+│   │   ├── pipeline_cli.py                command line
+│   │   ├── phase_controlled_pipeline.py   4 toggleable phases
+│   │   ├── workflow_orchestrator.py       stage chain for start/process
+│   │   ├── structured_pipeline.py + document_structure_extractor.py,
+│   │   │   furniture_cleaner.py, section_hierarchy_builder.py,
+│   │   │   structured_chunker.py, chunk_context_formatter.py,
+│   │   │   chunk_validator.py, retrieval_evaluator.py
+│   │   ├── sanitization_engine.py, quarantine_system.py, security_config.py
+│   │   ├── format_templates.py, conversation_formatter.py, personality_modifier.py
+│   │   ├── ten_pillars_integration.py, data_contract.py
+│   │   ├── ios_remote_server.py + ios_remote/   iPhone/iPad web app
+│   │   ├── install_app.py, install_windows.ps1, launchers/
+│   │   └── go_live.sh, run_pipeline.sh/.bat, setup.py
+│   └── test_files/                pytest suite
+```
+
+**How a run flows.** The GUI, CLI and iOS remote are only front ends. They hand work to either the phase-controlled pipeline (folder to folder, with toggles) or the workflow orchestrator (`extract -> security -> AI -> structured chunking`). Both call the same processing engines: sanitization, the structure-aware modules, formatting, personality, AI classification/quality scoring and the Ten Pillars layer, which talk to your chosen AI provider and read/write the phase folders and `config/`.
+
+---
+
+## Testing
 
 ```bash
 cd backup_cleanup/python_files
 venv/bin/python -m pytest ../test_files -q
 ```
 
-`test_structured_extraction_pipeline.py` covers each stage of the structure-aware pipeline: extraction, furniture cleaning, hierarchy building (including document-title inference), chunking, context formatting, validation and the retrieval benchmark. `test_installers.py` and `test_ios_remote.py` cover the Windows/iOS installers and the iOS remote server (auth, upload/download safety, job control). `test_pipeline_integration.py` covers the wiring: completeness validation for any numbered document, `evaluate-retrieval --file`, and the orchestrator's `structured_chunking` stage on a real generated PDF.
+The suite currently has **91 passing tests and 0 failing**. Coverage highlights:
 
-## More Documentation
+| Test file | Covers |
+|-----------|--------|
+| `test_structured_extraction_pipeline.py` | Each stage: extraction, furniture cleaning, hierarchy (including title inference), chunking, context formatting, validation, retrieval benchmark |
+| `test_pipeline_integration.py` | The wiring: completeness validation for any numbered document, `evaluate-retrieval --file`, the orchestrator's `structured_chunking` stage on a generated PDF |
+| `test_installers.py` | Windows and Linux installers, including a PowerShell dry run |
+| `test_ios_remote.py` | Auth, lockout, upload/download path safety, job control |
+
+---
+
+## Troubleshooting
+
+| Problem | Solution |
+|---------|----------|
+| GUI won't start | Run `./go_live.sh` from a terminal to see the error |
+| `No module named tkinter` | Install Tk (`sudo apt install python3-tk`; on Windows re-run the Python installer with **tcl/tk** selected) |
+| API key not working | Check the environment variable, or enter the key in **AI Settings** and use **Test** |
+| Local model won't connect | Start Ollama or LM Studio before the pipeline; confirm the endpoint URL |
+| Out of memory | Lower **Parallel Workers** to 1-2 in the Processing tab |
+| Files not processing | Input folder must contain PDF, CSV, JSON, JSONL, TXT or MD files |
+| `ModuleNotFoundError: pymupdf` / `tiktoken` | `pip install -r requirements.txt` inside the project venv |
+| "Structured pipeline import error" | A structured-pipeline module or dependency is missing; Phase 2 is using the basic chunker. Fix the import and re-run |
+| "Structured PDF extraction failed, falling back" | The PDF could not be parsed with layout data (encrypted or corrupt?). Text is still extracted, but without headings or furniture removal |
+| Validation report shows `garbled_text` | The PDF text layer is broken. Use an OCR'd copy, or install `pytesseract` + Tesseract so the page can be retried with OCR |
+| Section paths look flat or wrong | Headings were not detected. Check `<name>_structure.json` for `is_heading` flags |
+| iPhone can't reach the remote | Check both devices are on the same Tailscale/Wi-Fi network and that you used the printed URL; run `--show-url` again |
+
+Where to look: the **Monitoring** tab for errors, **Security Logs** for sanitization events, and lower parallelism for cleaner error output.
+
+---
+
+## Known limitations
+
+- Heading detection relies on font size/weight and the `Chapter/Step/Part/Module` patterns. PDFs whose headings match body text will give a flat hierarchy.
+- The completeness check covers only numbered units (`Step`, `Chapter`, `Part`, `Module`, digits or words up to twenty). Documents with unnumbered headings get per-chunk checks but no "is anything missing?" check.
+- `--file` benchmark queries come from section titles and vocabulary, so they favour topic-word retrieval. On documents with only a few chunks, completeness saturates at 100% for both systems; noise, context and purity are the informative metrics there.
+- Scanned PDFs need `pytesseract` and the Tesseract binary; without them image-only pages yield no text.
+- The Processing tab exposes six of the ten formats directly.
+- The Ten Pillars tab's headline status text and figures are not measured results (see [above](#the-ten-pillars-quality-system)).
+- The Windows installer and the iOS remote have not been run on real Windows or iOS hardware.
+
+---
+
+## More documentation
 
 | Document | What's in it |
 |----------|--------------|
-| [`RUNBOOK.md`](RUNBOOK.md) | Day-to-day operator guide |
+| [`RUNBOOK.md`](RUNBOOK.md) | Day-to-day operator guide ([gist copy](https://gist.github.com/IceMasterT/281c0f2e008d25d21d3798b07fefb0f9)) |
 | [`docs/AI_INTEGRATION_README.md`](docs/AI_INTEGRATION_README.md) | AI provider integration |
 | [`docs/CUSTOM_PERSONALITIES_README.md`](docs/CUSTOM_PERSONALITIES_README.md) | Writing custom personalities |
+| [`backup_cleanup/python_files/launchers/ios/INSTALL_IOS_APP.md`](backup_cleanup/python_files/launchers/ios/INSTALL_IOS_APP.md) | iOS remote install guide |
 | [`COMMUNITY.md`](COMMUNITY.md) | Discussions and support |
 
 ---
 
 ## License
 
-MIT License with Commons Clause
+MIT License with Commons Clause. Copyright (c) 2024. See [`LICENSE`](LICENSE).
 
-Copyright (c) 2024
-
----
-
-## Acknowledgments
-
-Built with Python, Tkinter, OpenAI SDK, and contributions from the open-source community.
+Built with Python, Tkinter, PyMuPDF, tiktoken, the OpenAI SDK, and contributions from the open-source community.
