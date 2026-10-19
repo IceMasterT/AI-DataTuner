@@ -178,6 +178,7 @@ The command center. Pick the input folder, scan for files, then start, pause, re
 | **Chunk Reports** | Opens a summary of every Phase 2 validation report: chunk counts, flagged chunks, missing numbered units, and the exact issues |
 | **Structure-aware status line / Details** | Real import and dependency checks showing whether the structure-aware PDF pipeline is active or degraded (see below) |
 | **Status line** | Files processed, cost so far, elapsed time |
+| **Progress bar + percentage** | Live overall progress from real per-file counts, with the current phase, e.g. `Phase 1/2: Sanitizing - 41/60 files (34% overall)` |
 
 ### Phase Control
 

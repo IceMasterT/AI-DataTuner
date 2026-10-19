@@ -250,6 +250,10 @@ class PhaseControlledPipeline:
         self.results = {}
 
         enabled_phases = self.get_enabled_phases()
+        self._progress_phases = list(enabled_phases)
+        self._progress_done_phases = 0
+        self._current_result = None
+        self._phase_total = 0
         self.logger.info(f"Starting pipeline with {len(enabled_phases)} enabled phases")
 
         # Validate folder structure and data flow
@@ -290,6 +294,7 @@ class PhaseControlledPipeline:
                     break
 
                 self.phases[phase_name].status = PhaseStatus.COMPLETE
+                self._progress_done_phases += 1
                 self.logger.info(
                     f"Phase {phase_name} completed successfully - data transferred to {self.phases[phase_name].output_folder}"
                 )
@@ -299,6 +304,52 @@ class PhaseControlledPipeline:
             self.current_phase = None
 
         return self.results
+
+    def _estimate_phase_items(self, phase_name: str) -> int:
+        """Count the items a phase is about to process (for progress reporting)."""
+        try:
+            cfg = self.phases[phase_name]
+            folder = Path(cfg.input_folder)
+            if not folder.exists():
+                return 0
+            if phase_name == "phase1_sanitization":
+                exts = {".pdf", ".csv", ".json", ".jsonl", ".txt", ".md"}
+                it = folder.rglob("*") if cfg.settings.get("recursive_input_scan", True) else folder.glob("*")
+                return sum(1 for f in it if f.is_file() and f.suffix.lower() in exts)
+            if phase_name == "phase2_chunking":
+                return sum(1 for _ in folder.glob("*.txt"))
+            if phase_name == "phase3_personality":
+                return sum(1 for _ in folder.rglob("*.txt"))
+            if phase_name == "phase4_quality":
+                n = sum(1 for pat in ("*.jsonl", "*.txt", "*.json") for _ in folder.rglob(pat))
+                pct = (cfg.settings.get("sample_percentage", 10) or 10) / 100
+                return max(1, int(n * pct)) if n else 0
+        except Exception:
+            return 0
+        return 0
+
+    def get_progress(self) -> Dict[str, Any]:
+        """Overall progress of the running pipeline, from real per-file counters."""
+        phases = getattr(self, "_progress_phases", [])
+        count = len(phases)
+        if not self.is_running or count == 0:
+            return {"running": False, "percent": 0.0, "phase": None, "phase_index": 0,
+                    "phase_count": count, "done": 0, "total": 0}
+        res = getattr(self, "_current_result", None)
+        total = getattr(self, "_phase_total", 0)
+        done = (res.files_processed + res.files_failed) if res else 0
+        within = min(done / total, 1.0) if total else 0.0
+        finished = getattr(self, "_progress_done_phases", 0)
+        percent = min((finished + within) / count * 100.0, 100.0)
+        return {
+            "running": True,
+            "percent": percent,
+            "phase": self.current_phase,
+            "phase_index": min(finished + 1, count),
+            "phase_count": count,
+            "done": done,
+            "total": total,
+        }
 
     def _validate_pipeline_setup(self, enabled_phases: List[str]):
         """Validate pipeline setup and folder structure."""
@@ -400,6 +451,8 @@ class PhaseControlledPipeline:
         result = PhaseResult(
             phase_name=phase_name, status=PhaseStatus.RUNNING, start_time=datetime.now()
         )
+        self._current_result = result
+        self._phase_total = self._estimate_phase_items(phase_name)
 
         try:
             if phase_name == "phase1_sanitization":

@@ -461,6 +461,10 @@ class UnifiedPipelineGUI:
             progress_frame, variable=self.progress_var, maximum=100, length=600
         )
         self.progress_bar.pack(fill=tk.X, pady=(5, 0))
+        self.progress_text = tk.StringVar(value="0%")
+        ttk.Label(
+            progress_frame, textvariable=self.progress_text, font=("Arial", 11, "bold")
+        ).pack(anchor=tk.E)
 
         # Quick stats
         stats_frame = ttk.Frame(control_frame)
@@ -1487,6 +1491,7 @@ Files    Text     Data     Training   Quality
         self.abort_button.config(state=tk.NORMAL)
 
         self.progress_var.set(0)
+        self.progress_text.set("0%")
         self.pipeline_info_label.config(
             text=f"Starting pipeline with {len(enabled_phases)} phases..."
         )
@@ -1495,20 +1500,52 @@ Files    Text     Data     Training   Quality
         self.processing_thread = threading.Thread(
             target=self._run_pipeline, daemon=True
         )
+        self._pipeline_outcome = None
         self.processing_thread.start()
+        self._poll_progress()
 
         self.log_message(f"Pipeline started with phases: {', '.join(enabled_phases)}")
 
+    _PHASE_LABELS = {
+        "phase1_sanitization": "Sanitizing",
+        "phase2_chunking": "Chunking",
+        "phase3_personality": "Formatting",
+        "phase4_quality": "Quality scoring",
+    }
+
+    def _poll_progress(self):
+        """Refresh the progress bar and percentage while the pipeline runs."""
+        prog = self.pipeline.get_progress()
+        if prog["running"]:
+            pct = prog["percent"]
+            self.progress_var.set(pct)
+            self.progress_text.set(f"{pct:.0f}%")
+            label = self._PHASE_LABELS.get(prog["phase"], "Working")
+            items = f" - {prog['done']}/{prog['total']} files" if prog["total"] else ""
+            self.pipeline_info_label.config(
+                text=f"Phase {prog['phase_index']}/{prog['phase_count']}: {label}{items}  ({pct:.0f}% overall)"
+            )
+        thread = getattr(self, "processing_thread", None)
+        if thread is not None and thread.is_alive():
+            self._progress_job = self.root.after(500, self._poll_progress)
+            return
+        outcome = getattr(self, "_pipeline_outcome", None)
+        if outcome is not None:
+            self._pipeline_outcome = None
+            kind, payload = outcome
+            if kind == "ok":
+                self._on_pipeline_complete(payload)
+            else:
+                self._on_pipeline_error(payload)
+
     def _run_pipeline(self):
         """Run pipeline in background thread."""
+        # Tk must only be touched from the main thread: record the outcome here and
+        # let _poll_progress (main thread) deliver it.
         try:
-            results = self.pipeline.start_pipeline()
-
-            # Update UI on completion
-            self.root.after(0, lambda: self._on_pipeline_complete(results))
-
+            self._pipeline_outcome = ("ok", self.pipeline.start_pipeline())
         except Exception as e:
-            self.root.after(0, lambda: self._on_pipeline_error(str(e)))
+            self._pipeline_outcome = ("error", str(e))
 
     def _on_pipeline_complete(self, results):
         """Handle pipeline completion."""
@@ -1518,6 +1555,7 @@ Files    Text     Data     Training   Quality
         self.abort_button.config(state=tk.DISABLED)
 
         self.progress_var.set(100)
+        self.progress_text.set("100%")
         self.pipeline_info_label.config(text="Pipeline completed successfully!")
 
         # Show results

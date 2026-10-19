@@ -121,3 +121,40 @@ class TestLaunchGate(unittest.TestCase):
     def test_pipeline_config_health_check_passes(self):
         import operational_health_check as ohc
         self.assertTrue(ohc.check_pipeline_config())
+
+
+class TestProgressReporting(unittest.TestCase):
+    """The progress bar must move during a run, not jump from 0 to 100."""
+
+    def test_progress_advances_monotonically_and_reaches_phase_boundaries(self):
+        import threading, time
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / "in").mkdir()
+            for i in range(6):
+                write_book_pdf(tmp / "in" / f"book{i}.pdf", chapters=2)
+            p = PhaseControlledPipeline(str(tmp / "cfg.json"))
+            folders = [tmp / "in", tmp / "p1", tmp / "p2", tmp / "p3", tmp / "p4"]
+            for name, (src, dst) in zip(
+                ("phase1_sanitization", "phase2_chunking", "phase3_personality", "phase4_quality"),
+                zip(folders, folders[1:]),
+            ):
+                p.phases[name].input_folder, p.phases[name].output_folder = str(src), str(dst)
+                p.phases[name].status = PhaseStatus.ENABLED if name in (
+                    "phase1_sanitization", "phase2_chunking") else PhaseStatus.DISABLED
+            self.assertFalse(p.get_progress()["running"])
+
+            samples = []
+            t = threading.Thread(target=p.start_pipeline)
+            t.start()
+            while t.is_alive():
+                samples.append(p.get_progress())
+                time.sleep(0.005)
+            t.join()
+
+            pcts = [s["percent"] for s in samples if s["running"]]
+            self.assertTrue(pcts, "no progress sampled while running")
+            self.assertEqual(pcts, sorted(pcts), "progress went backwards")
+            self.assertTrue(any(0 < v < 100 for v in pcts), f"never intermediate: {pcts[:5]}")
+            self.assertTrue(all(s["phase_count"] == 2 for s in samples if s["running"]))
+            self.assertFalse(p.get_progress()["running"])
