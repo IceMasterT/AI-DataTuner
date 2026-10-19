@@ -147,7 +147,7 @@ def check_pipeline_config() -> bool:
             {"training_target": "claude"}
         )
         claude_text = pipeline._fallback_formatting(
-            "Example answer", "instruct", "professional"
+            "Example answer", claude_protocol.get("output_format", "claude"), "professional"
         )
         if pipeline._validate_training_output(claude_text, claude_protocol, True):
             _ok("Claude protocol", "fallback formatting passes strict markers")

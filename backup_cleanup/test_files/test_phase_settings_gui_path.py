@@ -113,3 +113,11 @@ class TestPillarsReporting(unittest.TestCase):
     def test_implemented_count_is_not_overstated(self):
         from ten_pillars_integration import TenPillarsIntegration
         self.assertEqual(len(TenPillarsIntegration.IMPLEMENTED_PILLARS), 7)
+
+
+class TestLaunchGate(unittest.TestCase):
+    """run_pipeline.sh refuses to open the app when the health check fails."""
+
+    def test_pipeline_config_health_check_passes(self):
+        import operational_health_check as ohc
+        self.assertTrue(ohc.check_pipeline_config())
