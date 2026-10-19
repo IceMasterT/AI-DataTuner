@@ -44,14 +44,18 @@ except ImportError as e:
     TEN_PILLARS_AVAILABLE = False
 
 
+APP_VERSION = "2.0 structure-aware"
+
+
 class UnifiedPipelineGUI:
     """Unified GUI combining all pipeline features."""
 
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title("LLM Data Pipeline - Unified Control Center")
-        self.root.geometry("1600x1000")
-        self.root.minsize(1400, 900)
+        self.root.title(f"LLM Data Pipeline - Unified Control Center  |  v{APP_VERSION}")
+        self.ui_scale = max(1.0, float(self.root.tk.call("tk", "scaling")) / 1.3333)
+        self._geo(self.root, "1600x1000")
+        self.root.minsize(*self._scaled(1400, 900))
 
         # Initialize components
         self.pipeline = get_pipeline()
@@ -289,6 +293,18 @@ class UnifiedPipelineGUI:
         if persist:
             self.pipeline.save_configuration()
 
+    def _scaled(self, width, height):
+        """Scale a design size (96-dpi pixels) for HiDPI/large-font desktops."""
+        return int(width * self.ui_scale), int(height * self.ui_scale)
+
+    def _geo(self, window, size):
+        """Set a window size scaled for the display, never larger than the screen."""
+        w, h = (int(v) for v in size.split("x"))
+        w, h = self._scaled(w, h)
+        w = min(w, int(window.winfo_screenwidth() * 0.92))
+        h = min(h, int(window.winfo_screenheight() * 0.9))
+        window.geometry(f"{w}x{h}")
+
     def create_widgets(self):
         """Create all GUI widgets."""
         # Main container with notebook
@@ -323,7 +339,13 @@ class UnifiedPipelineGUI:
             text="LLM Data Pipeline - Unified Control Center",
             font=("Arial", 16, "bold"),
         )
-        title_label.pack(pady=(10, 20))
+        title_label.pack(pady=(10, 0))
+        ttk.Label(
+            main_frame,
+            text=f"v{APP_VERSION}  -  structure-aware PDF chunking, validation reports, 10 output formats",
+            font=("Arial", 10),
+            foreground="#2e7d32",
+        ).pack(pady=(0, 14))
 
         # File selection section
         file_frame = ttk.LabelFrame(main_frame, text="File Selection", padding=15)
@@ -411,9 +433,6 @@ class UnifiedPipelineGUI:
             button_frame, text="📁 Open Output", command=self.open_output_folder
         ).pack(side=tk.LEFT, padx=(0, 5))
 
-        ttk.Button(
-            button_frame, text="🔎 Chunk Reports", command=self.view_chunk_reports
-        ).pack(side=tk.LEFT)
 
         # Ten Pillars processing button (if available)
         if TEN_PILLARS_AVAILABLE:
@@ -1584,7 +1603,7 @@ Files    Text     Data     Training   Quality
         settings_window.title(
             f"Phase Settings - {self.pipeline.phases[phase_name].name}"
         )
-        settings_window.geometry("600x500")
+        self._geo(settings_window, "600x500")
         settings_window.transient(self.root)
         settings_window.grab_set()
 
@@ -1631,7 +1650,7 @@ Files    Text     Data     Training   Quality
         """Open comprehensive personality management window."""
         personality_window = tk.Toplevel(self.root)
         personality_window.title("Personality Management")
-        personality_window.geometry("800x600")
+        self._geo(personality_window, "800x600")
         personality_window.transient(self.root)
 
         # Create main frame with notebook
@@ -1769,7 +1788,7 @@ Files    Text     Data     Training   Quality
         """Preview personality transformation with real implementation."""
         preview_window = tk.Toplevel(self.root)
         preview_window.title("Personality Preview")
-        preview_window.geometry("700x500")
+        self._geo(preview_window, "700x500")
         preview_window.transient(self.root)
 
         # Input text
@@ -1929,7 +1948,7 @@ Files    Text     Data     Training   Quality
         # Show testing dialog
         test_window = tk.Toplevel(self.root)
         test_window.title("Testing OpenAI Connection")
-        test_window.geometry("400x200")
+        self._geo(test_window, "400x200")
         test_window.transient(self.root)
         test_window.grab_set()
 
@@ -2299,7 +2318,7 @@ Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
         # Create cleaning options dialog
         clean_window = tk.Toplevel(self.root)
         clean_window.title(f"Clean Folder: {folder_name}")
-        clean_window.geometry("500x400")
+        self._geo(clean_window, "500x400")
         clean_window.transient(self.root)
         clean_window.grab_set()
 
@@ -3149,13 +3168,16 @@ Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
         ttk.Button(
             frame, text="Details", width=8, command=self.show_structured_status
         ).pack(side=tk.LEFT, padx=(10, 0))
+        ttk.Button(
+            frame, text="🔎 Chunk Reports", command=self.view_chunk_reports
+        ).pack(side=tk.LEFT, padx=(6, 0))
 
     def show_structured_status(self):
         """Show which structure-aware components are available and what they do."""
         modules_ok, deps_ok, rows = self.get_structured_pipeline_status()
         win = tk.Toplevel(self.root)
         win.title("Structure-Aware Pipeline Status")
-        win.geometry("640x560")
+        self._geo(win, "640x560")
         box = scrolledtext.ScrolledText(win, width=80, height=32, wrap=tk.WORD)
         box.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
@@ -3198,7 +3220,7 @@ Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
         reports = sorted(folder.rglob("*_validation_report.json")) if folder.exists() else []
         win = tk.Toplevel(self.root)
         win.title("Chunk Validation Reports")
-        win.geometry("860x600")
+        self._geo(win, "860x600")
         box = scrolledtext.ScrolledText(win, width=100, height=34, wrap=tk.WORD)
         box.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
@@ -3264,7 +3286,7 @@ Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
         """View detailed results."""
         results_window = tk.Toplevel(self.root)
         results_window.title("Pipeline Results")
-        results_window.geometry("800x600")
+        self._geo(results_window, "800x600")
 
         results_text = scrolledtext.ScrolledText(results_window, width=90, height=35)
         results_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
@@ -3665,7 +3687,7 @@ Remediated: {dashboard["processing_stats"]["remediated"]}
         # Create contract details window
         contract_window = tk.Toplevel(self.root)
         contract_window.title("Data Contract Details")
-        contract_window.geometry("800x600")
+        self._geo(contract_window, "800x600")
 
         # Contract details text
         contract_text = tk.Text(contract_window, wrap=tk.WORD)
@@ -3725,7 +3747,7 @@ IMMUTABLE SPECIFICATION - TEAM SIGN-OFF REQUIRED FOR CHANGES
         # Create filter stats window
         filter_window = tk.Toplevel(self.root)
         filter_window.title("Multi-Layer Filter Statistics")
-        filter_window.geometry("700x500")
+        self._geo(filter_window, "700x500")
 
         # Filter stats text
         filter_text = tk.Text(filter_window, wrap=tk.WORD)
@@ -3774,7 +3796,7 @@ IMMUTABLE SPECIFICATION - TEAM SIGN-OFF REQUIRED FOR CHANGES
         # Create quality dashboard window
         quality_window = tk.Toplevel(self.root)
         quality_window.title("Quality Scoring Dashboard")
-        quality_window.geometry("800x600")
+        self._geo(quality_window, "800x600")
 
         # Quality dashboard text
         quality_text = tk.Text(quality_window, wrap=tk.WORD)
@@ -3981,7 +4003,7 @@ IMMUTABLE SPECIFICATION - TEAM SIGN-OFF REQUIRED FOR CHANGES
         # Create test dialog
         test_window = tk.Toplevel(self.root)
         test_window.title("Test Single Item - Ten Pillars")
-        test_window.geometry("600x500")
+        self._geo(test_window, "600x500")
 
         # Test content input
         ttk.Label(test_window, text="Test Content:").pack(anchor=tk.W, padx=10, pady=5)
@@ -4134,7 +4156,7 @@ IMMUTABLE SPECIFICATION - TEAM SIGN-OFF REQUIRED FOR CHANGES
             # Create report window
             report_window = tk.Toplevel(self.root)
             report_window.title("Ten Pillars Compliance Report")
-            report_window.geometry("900x700")
+            self._geo(report_window, "900x700")
 
             # Report text
             report_text = tk.Text(report_window, wrap=tk.WORD, font=("Consolas", 10))
