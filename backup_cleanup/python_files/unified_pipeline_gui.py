@@ -405,6 +405,10 @@ class UnifiedPipelineGUI:
 
         ttk.Button(
             button_frame, text="📁 Open Output", command=self.open_output_folder
+        ).pack(side=tk.LEFT, padx=(0, 5))
+
+        ttk.Button(
+            button_frame, text="🔎 Chunk Reports", command=self.view_chunk_reports
         ).pack(side=tk.LEFT)
 
         # Ten Pillars processing button (if available)
@@ -415,6 +419,9 @@ class UnifiedPipelineGUI:
                 command=self.process_with_ten_pillars,
                 style="Accent.TButton",
             ).pack(side=tk.LEFT, padx=(20, 0))
+
+        # Structure-aware pipeline status (real import/dependency checks)
+        self._build_structured_status_panel(control_frame)
 
         # Progress section
         progress_frame = ttk.Frame(control_frame)
@@ -2709,36 +2716,62 @@ Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
         frame.max_blank_lines_var = max_blank_lines_var
 
     def _create_phase2_settings(self, frame, phase_config):
-        """Create Phase 2 specific settings."""
-        # Chunking settings
-        chunk_frame = ttk.LabelFrame(frame, text="Chunking Settings", padding=10)
+        """Create Phase 2 specific settings (structure-aware chunking)."""
+        info = ttk.Label(
+            frame,
+            text=(
+                "Chunks stay inside one section, split on paragraph/sentence "
+                "boundaries,\nand carry a Document > Section breadcrumb. "
+                "Sizes are real tokens (tiktoken)."
+            ),
+            justify=tk.LEFT,
+        )
+        info.pack(anchor=tk.W, padx=8, pady=(8, 2))
+
+        chunk_frame = ttk.LabelFrame(frame, text="Chunk Size (tokens)", padding=10)
         chunk_frame.pack(fill=tk.X, padx=5, pady=5)
 
-        chunk_size_var = tk.IntVar(
-            value=phase_config.settings.get("max_chunk_tokens", 150)
-        )
-        overlap_var = tk.IntVar(value=phase_config.settings.get("token_overlap", 1))
+        target_var = tk.IntVar(value=phase_config.settings.get("target_tokens", 500))
+        max_var = tk.IntVar(value=phase_config.settings.get("max_chunk_tokens", 800))
         subfolders_var = tk.BooleanVar(
             value=phase_config.settings.get("create_subfolders", True)
         )
 
-        ttk.Label(chunk_frame, text="Max Chunk Tokens:").pack(anchor=tk.W)
-        ttk.Scale(
-            chunk_frame, from_=50, to=500, variable=chunk_size_var, orient=tk.HORIZONTAL
-        ).pack(fill=tk.X, pady=2)
+        row = ttk.Frame(chunk_frame)
+        row.pack(fill=tk.X, pady=2)
+        ttk.Label(row, text="Target tokens (preferred):", width=26).pack(side=tk.LEFT)
+        ttk.Spinbox(row, from_=100, to=2000, increment=50, textvariable=target_var, width=8).pack(side=tk.LEFT)
 
-        ttk.Label(chunk_frame, text="Token Overlap:").pack(anchor=tk.W)
-        ttk.Scale(
-            chunk_frame, from_=0, to=5, variable=overlap_var, orient=tk.HORIZONTAL
-        ).pack(fill=tk.X, pady=2)
+        row = ttk.Frame(chunk_frame)
+        row.pack(fill=tk.X, pady=2)
+        ttk.Label(row, text="Max tokens (hard ceiling):", width=26).pack(side=tk.LEFT)
+        ttk.Spinbox(row, from_=150, to=4000, increment=50, textvariable=max_var, width=8).pack(side=tk.LEFT)
+
+        ttk.Label(
+            chunk_frame,
+            text="Max includes the context prefix. Target is lowered to Max if larger.",
+            font=("Arial", 9),
+        ).pack(anchor=tk.W, pady=(4, 0))
 
         ttk.Checkbutton(
-            chunk_frame, text="Create Subfolders", variable=subfolders_var
+            chunk_frame, text="Create a subfolder per document", variable=subfolders_var
+        ).pack(anchor=tk.W, pady=(8, 0))
+
+        outputs = ttk.LabelFrame(frame, text="Written for each document", padding=10)
+        outputs.pack(fill=tk.X, padx=5, pady=5)
+        ttk.Label(
+            outputs,
+            text=(
+                "<name>_chunks.jsonl            chunks + page range + quality flags\n"
+                "<name>_validation_report.json  issues found (also: Chunk Reports button)\n"
+                "<name>_source_manifest.json    fate of every source block"
+            ),
+            font=("Courier", 9),
+            justify=tk.LEFT,
         ).pack(anchor=tk.W)
 
-        # Store variables
-        frame.chunk_size_var = chunk_size_var
-        frame.overlap_var = overlap_var
+        frame.target_tokens_var = target_var
+        frame.chunk_size_var = max_var
         frame.subfolders_var = subfolders_var
 
     def _create_phase3_settings(self, frame, phase_config):
@@ -2916,8 +2949,11 @@ Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
             elif phase_name == "phase2_chunking":
                 phase_config.settings.update(
                     {
+                        "target_tokens": min(
+                            settings_frame.target_tokens_var.get(),
+                            settings_frame.chunk_size_var.get(),
+                        ),
                         "max_chunk_tokens": settings_frame.chunk_size_var.get(),
-                        "token_overlap": settings_frame.overlap_var.get(),
                         "create_subfolders": settings_frame.subfolders_var.get(),
                     }
                 )
@@ -2979,8 +3015,8 @@ Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
                         "max_consecutive_blank_lines": 2,
                     },
                     "phase2_chunking": {
-                        "max_chunk_tokens": 150,
-                        "token_overlap": 1,
+                        "target_tokens": 500,
+                        "max_chunk_tokens": 800,
                         "create_subfolders": True,
                     },
                     "phase3_personality": {
@@ -3029,6 +3065,164 @@ Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
             text = f"Imagine this: {text} Pretty fascinating, right?"
 
         return text
+
+    # ------------------------------------------------------------------
+    # Structure-aware pipeline: status + report viewer
+    # ------------------------------------------------------------------
+    _STRUCTURED_MODULES = (
+        ("Layout extraction", "document_structure_extractor"),
+        ("Header/footer cleaning", "furniture_cleaner"),
+        ("Section hierarchy", "section_hierarchy_builder"),
+        ("Structure-aware chunker", "structured_chunker"),
+        ("Chunk validation", "chunk_validator"),
+        ("Context breadcrumbs", "chunk_context_formatter"),
+    )
+    _STRUCTURED_DEPS = (
+        ("PyMuPDF (PDF layout)", "fitz", True),
+        ("tiktoken (token counts)", "tiktoken", True),
+        ("pdfplumber (fallback)", "pdfplumber", False),
+        ("PyPDF2 (fallback)", "PyPDF2", False),
+        ("pytesseract (OCR retry)", "pytesseract", False),
+    )
+
+    @staticmethod
+    def _module_available(name):
+        import importlib.util
+
+        try:
+            return importlib.util.find_spec(name) is not None
+        except (ImportError, ValueError):
+            return False
+
+    def get_structured_pipeline_status(self):
+        """Return (all_modules_ok, required_deps_ok, rows) from real import checks."""
+        rows = []
+        modules_ok = True
+        for label, mod in self._STRUCTURED_MODULES:
+            ok = self._module_available(mod)
+            modules_ok = modules_ok and ok
+            rows.append((label, ok, mod, True))
+        deps_ok = True
+        for label, mod, required in self._STRUCTURED_DEPS:
+            ok = self._module_available(mod)
+            if required:
+                deps_ok = deps_ok and ok
+            rows.append((label, ok, mod, required))
+        return modules_ok, deps_ok, rows
+
+    def _build_structured_status_panel(self, parent):
+        modules_ok, deps_ok, _rows = self.get_structured_pipeline_status()
+        frame = ttk.Frame(parent)
+        frame.pack(fill=tk.X, pady=(10, 0))
+
+        if modules_ok and deps_ok:
+            text = "🧩 Structure-aware PDF pipeline: ✅ ACTIVE in Phase 1-2"
+            color = "green"
+        elif modules_ok:
+            text = "🧩 Structure-aware PDF pipeline: ⚠️ missing PyMuPDF/tiktoken (degraded)"
+            color = "orange"
+        else:
+            text = "🧩 Structure-aware PDF pipeline: ❌ modules missing, basic chunker used"
+            color = "red"
+        ttk.Label(frame, text=text, font=("Arial", 9), foreground=color).pack(
+            side=tk.LEFT
+        )
+        ttk.Button(
+            frame, text="Details", width=8, command=self.show_structured_status
+        ).pack(side=tk.LEFT, padx=(10, 0))
+
+    def show_structured_status(self):
+        """Show which structure-aware components are available and what they do."""
+        modules_ok, deps_ok, rows = self.get_structured_pipeline_status()
+        win = tk.Toplevel(self.root)
+        win.title("Structure-Aware Pipeline Status")
+        win.geometry("640x560")
+        box = scrolledtext.ScrolledText(win, width=80, height=32, wrap=tk.WORD)
+        box.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        phase2 = self.pipeline.phases.get("phase2_chunking")
+        target = phase2.settings.get("target_tokens", 500) if phase2 else 500
+        maxt = phase2.settings.get("max_chunk_tokens", 800) if phase2 else 800
+        lines = [
+            "STRUCTURE-AWARE PIPELINE",
+            "",
+            "Phase 1 (Sanitization), per PDF:",
+            "  - reads layout (page, position, font size, reading order)",
+            "  - removes repeated headers/footers and page numbers (audit saved)",
+            "  - writes <name>_structure.json and <name>_furniture_audit.json",
+            "Phase 2 (Chunking), per document:",
+            "  - builds a Document > Section > Subsection tree",
+            "  - chunks inside sections only, on paragraph/sentence boundaries",
+            f"  - target {target} tokens, hard max {maxt} tokens (Phase Control > Phase 2 > Settings)",
+            "  - prefixes each chunk with its section path",
+            "  - validates chunks and writes a validation report + source manifest",
+            "",
+            "COMPONENTS",
+        ]
+        for label, ok, mod, required in rows:
+            tag = "OK     " if ok else ("MISSING" if required else "absent ")
+            lines.append(f"  [{tag}] {label}  ({mod})")
+        lines += [""]
+        if not modules_ok:
+            lines.append("A pipeline module is missing: Phase 2 falls back to the basic sentence chunker.")
+        if not deps_ok:
+            lines.append("Install the dependencies:  pip install -r requirements.txt")
+        if modules_ok and deps_ok:
+            lines.append("Everything required is present; PDFs use the structure-aware path.")
+        lines.append("Optional items marked 'absent' only matter for fallbacks and scanned PDFs.")
+        box.insert(tk.END, "\n".join(lines))
+        box.config(state=tk.DISABLED)
+
+    def view_chunk_reports(self):
+        """Summarise the validation report of every document chunked in Phase 2."""
+        folder = Path(self.phase2_folder.get())
+        reports = sorted(folder.rglob("*_validation_report.json")) if folder.exists() else []
+        win = tk.Toplevel(self.root)
+        win.title("Chunk Validation Reports")
+        win.geometry("860x600")
+        box = scrolledtext.ScrolledText(win, width=100, height=34, wrap=tk.WORD)
+        box.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        if not reports:
+            box.insert(
+                tk.END,
+                f"No validation reports found under:\n  {folder}\n\n"
+                "Run the pipeline with Phase 1 and Phase 2 enabled on a PDF, TXT or MD file.",
+            )
+            box.config(state=tk.DISABLED)
+            return
+
+        out = []
+        for rpt in reports:
+            try:
+                data = json.loads(rpt.read_text(encoding="utf-8"))
+            except (OSError, ValueError) as exc:
+                out.append(f"{rpt}\n  could not read: {exc}\n")
+                continue
+            issues = data.get("issues", []) or []
+            errors = [i for i in issues if i.get("severity") == "error"]
+            warns = [i for i in issues if i.get("severity") == "warning"]
+            name = rpt.name.replace("_validation_report.json", "")
+            verdict = "VALID" if data.get("is_valid", not errors) else "HAS ERRORS"
+            out.append(f"{name}: {verdict}  ({len(errors)} errors, {len(warns)} warnings)")
+            out.append(
+                f"  chunks: {data.get('total_chunks', '?')} "
+                f"({data.get('flagged_chunks_count', 0)} flagged)  "
+                f"source blocks kept: {(data.get('manifest_summary') or {}).get('inclusion_rate', '?')}"
+            )
+            missing = data.get("missing_expected_steps") or []
+            if missing:
+                out.append(f"  MISSING numbered units: {missing}")
+            out.append(f"  report: {rpt}")
+            for issue in issues[:15]:
+                kind = issue.get("issue_type") or issue.get("type") or "issue"
+                msg = issue.get("message") or issue.get("description") or ""
+                out.append(f"  - [{issue.get('severity', '?')}] {kind}: {msg}"[:200])
+            if len(issues) > 15:
+                out.append(f"  ... {len(issues) - 15} more in the report file")
+            out.append("")
+        box.insert(tk.END, "\n".join(out))
+        box.config(state=tk.DISABLED)
 
     def open_output_folder(self):
         """Open output folder."""

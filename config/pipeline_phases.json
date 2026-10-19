@@ -42,7 +42,8 @@
     "settings": {
       "chunk_size": "1-2_sentences",
       "token_overlap": 1,
-      "max_chunk_tokens": 150,
+      "target_tokens": 500,
+      "max_chunk_tokens": 800,
       "preserve_context": true,
       "fact_extraction": true,
       "create_subfolders": true

@@ -149,7 +149,8 @@ class PhaseControlledPipeline:
                 settings={
                     "chunk_size": "1-2_sentences",
                     "token_overlap": 1,
-                    "max_chunk_tokens": 150,
+                    "target_tokens": 500,
+                    "max_chunk_tokens": 800,
                     "preserve_context": True,
                     "fact_extraction": True,
                     "create_subfolders": True,
@@ -1079,6 +1080,12 @@ class PhaseControlledPipeline:
 
         target_tokens = int(config.settings.get("target_tokens", 500) or 500)
         max_tokens = int(config.settings.get("max_chunk_tokens", 800) or 800)
+        if target_tokens > max_tokens:
+            self.logger.warning(
+                f"Phase 2: target_tokens ({target_tokens}) exceeds max_chunk_tokens "
+                f"({max_tokens}); lowering target to {max_tokens}"
+            )
+            target_tokens = max_tokens
 
         # Process all text and structure files from Phase 1
         text_files = list(input_path.glob("*.txt"))
@@ -1776,6 +1783,19 @@ class PhaseControlledPipeline:
         with open(self.config_file, "w", encoding="utf-8") as f:
             json.dump(config_data, f, indent=2, default=str)
 
+    @staticmethod
+    def _migrate_legacy_phase2_settings(saved: Dict[str, Any]) -> None:
+        """Upgrade Phase 2 settings saved by the pre-structured GUI.
+
+        Older versions stored ``max_chunk_tokens`` = 150 and no ``target_tokens``.
+        Applied to the structure-aware chunker that would cap every chunk at 150
+        tokens (context prefix included), so replace that legacy default.
+        """
+        if "target_tokens" not in saved:
+            saved["target_tokens"] = 500
+            if int(saved.get("max_chunk_tokens", 0) or 0) <= 150:
+                saved["max_chunk_tokens"] = 800
+
     def load_configuration(self):
         """Load phase configuration from file."""
         if self.config_file.exists():
@@ -1790,7 +1810,10 @@ class PhaseControlledPipeline:
                             status_value
                         )
 
-                        self.phases[name].settings.update(data.get("settings", {}))
+                        saved = dict(data.get("settings", {}))
+                        if name == "phase2_chunking":
+                            self._migrate_legacy_phase2_settings(saved)
+                        self.phases[name].settings.update(saved)
 
                 self.logger.info("Configuration loaded successfully")
 

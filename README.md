@@ -175,13 +175,21 @@ The command center. Pick the input folder, scan for files, then start, pause, re
 | **Pause / Resume / Abort** | Control a running job |
 | **Save Config** | Persist current settings |
 | **View Results / Open Output** | Open the output folders |
+| **Chunk Reports** | Opens a summary of every Phase 2 validation report: chunk counts, flagged chunks, missing numbered units, and the exact issues |
+| **Structure-aware status line / Details** | Real import and dependency checks showing whether the structure-aware PDF pipeline is active or degraded (see below) |
 | **Status line** | Files processed, cost so far, elapsed time |
 
 ### Phase Control
 
 <p align="center"><img src="docs/images/gui-phases.png" alt="Phase Control tab" width="100%"></p>
 
-Red light / green light control for each phase. **Toggle** enables or disables a phase; **Settings** opens that phase's options (for Phase 2: `target_tokens` default 500 and `max_chunk_tokens` default 800). A data-flow diagram shows the folder chain.
+Red light / green light control for each phase. **Toggle** enables or disables a phase; **Settings** opens that phase's options. A data-flow diagram shows the folder chain.
+
+**Phase 2 settings** are the structure-aware chunker's controls: **Target tokens** (default 500) and **Max tokens** (hard ceiling including the context prefix, default 800). If Target is larger than Max it is lowered to Max.
+
+<p align="center"><img src="docs/images/gui-phase2-settings.png" alt="Phase 2 settings dialog" width="55%"></p>
+
+> **Upgrading note:** older versions of the app saved `max_chunk_tokens = 150` (no `target_tokens`). Applied to the structure-aware chunker that would have capped every chunk at 150 tokens, so the app now migrates that legacy setting to 500/800 when it loads the config. Values you chose yourself are kept.
 
 ### AI Settings
 
@@ -210,6 +218,12 @@ Choose a profile, set its **Strength** (0.1 subtle to 1.0 strong), or write a cu
 <p align="center"><img src="docs/images/gui-security.png" alt="Security tab" width="100%"></p>
 
 Pick a security level (Strict / Balanced / Permissive) and toggle individual checks. The log pane shows what was detected and what action was taken. Details in [Security and sanitization](#security-and-sanitization).
+
+### Structure-aware pipeline status
+
+The line under the Main Control buttons says whether the structure-aware PDF pipeline is **active**, **degraded** (PyMuPDF or tiktoken missing) or **unavailable** (a module is missing, so Phase 2 uses the basic sentence chunker). **Details** lists each component and dependency as `OK`, `MISSING` or `absent`, with the current chunk-size settings. This is a live check, not a fixed label.
+
+<p align="center"><img src="docs/images/gui-structured-status.png" alt="Structure-aware pipeline status window" width="55%"></p>
 
 ### Processing
 
@@ -564,7 +578,7 @@ cd backup_cleanup/python_files
 venv/bin/python -m pytest ../test_files -q
 ```
 
-The suite currently has **91 passing tests and 0 failing**. Coverage highlights:
+The suite currently has **95 passing tests and 0 failing**. Coverage highlights:
 
 | Test file | Covers |
 |-----------|--------|
@@ -572,6 +586,7 @@ The suite currently has **91 passing tests and 0 failing**. Coverage highlights:
 | `test_pipeline_integration.py` | The wiring: completeness validation for any numbered document, `evaluate-retrieval --file`, the orchestrator's `structured_chunking` stage on a generated PDF |
 | `test_installers.py` | Windows and Linux installers, including a PowerShell dry run |
 | `test_ios_remote.py` | Auth, lockout, upload/download path safety, job control |
+| `test_phase_settings_gui_path.py` | Saved Phase 2 settings (including the legacy 150-token migration) drive the structure-aware chunker, and Phase 2 writes chunks, report and manifest |
 
 ---
 
