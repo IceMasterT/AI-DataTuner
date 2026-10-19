@@ -65,6 +65,13 @@ class PhaseResult:
             self.metrics = {}
 
 
+# Formats Phase 3 can write. The enhanced formatter handles ENHANCED_FORMATTER_FORMATS;
+# the rest are rendered from format_templates.
+ENHANCED_FORMATTER_FORMATS = {"qwen", "alpaca", "chatml", "sharegpt", "llama2", "instruct", "gpt_jsonl"}
+TEMPLATE_ONLY_FORMATS = {"zephyr", "claude", "minimalist"}
+TEXT_OUTPUT_FORMATS = {"qwen", "alpaca", "instruct", "claude", "zephyr", "minimalist"}
+
+
 class PhaseControlledPipeline:
     """Main pipeline with phase control system."""
 
@@ -471,11 +478,29 @@ class PhaseControlledPipeline:
                     '"role": "assistant"',
                 ],
             },
-            "claude": {
+            "instruct": {
                 "output_format": "instruct",
                 "prompt": "Please explain this information:",
                 "file_extension": ".txt",
                 "required_markers": ["Question:", "Answer:"],
+            },
+            "claude": {
+                "output_format": "claude",
+                "prompt": "Please explain this information:",
+                "file_extension": ".txt",
+                "required_markers": ["Human:", "Assistant:"],
+            },
+            "zephyr": {
+                "output_format": "zephyr",
+                "prompt": "Please explain this information:",
+                "file_extension": ".txt",
+                "required_markers": ["- role: user", "- role: assistant"],
+            },
+            "minimalist": {
+                "output_format": "minimalist",
+                "prompt": "Please explain this information:",
+                "file_extension": ".txt",
+                "required_markers": ["User:", "Assistant:"],
             },
             "mistral": {
                 "output_format": "chatml",
@@ -1291,6 +1316,12 @@ class PhaseControlledPipeline:
 
         # Initialize enhanced formatter if available
         enhanced_formatter = None
+        if use_enhanced and output_format not in ENHANCED_FORMATTER_FORMATS:
+            # The enhanced formatter silently defaults unknown formats to qwen.
+            use_enhanced = False
+            self.logger.info(
+                f"Phase 3: '{output_format}' is rendered by the template formatter"
+            )
         if use_enhanced:
             try:
                 enhanced_formatter = get_enhanced_formatter(
@@ -1379,7 +1410,7 @@ class PhaseControlledPipeline:
 
                 # Save formatted content to Phase 3 folder
                 relative_path = chunk_file.relative_to(input_path)
-                if output_format in ["qwen", "alpaca", "instruct"]:
+                if output_format in TEXT_OUTPUT_FORMATS:
                     output_file = output_path / relative_path.with_suffix(".txt")
                 else:
                     output_file = output_path / relative_path.with_suffix(".jsonl")
@@ -1486,6 +1517,13 @@ class PhaseControlledPipeline:
             return f"[INST] Please explain this information: [/INST] {content}"
         elif output_format == "instruct":
             return f"Question: Please explain this information:\n\nAnswer: {content}"
+        elif output_format in TEMPLATE_ONLY_FORMATS:
+            from format_templates import ConversationFormat, FormatFactory
+
+            template = FormatFactory.create_template(ConversationFormat(output_format))
+            return template.format_single_turn(
+                "Please explain this information:", content
+            )
         else:
             # Default to qwen format
             return (

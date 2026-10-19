@@ -231,13 +231,15 @@ The line under the Main Control buttons says whether the structure-aware PDF pip
 
 Choose the output format, **Parallel Workers** (1-8, default 4) and **Batch Size** (1-50, default 10). Lower the worker count if you run out of memory.
 
-> The Processing tab's radio buttons show six of the ten supported formats; the other four (Zephyr, Instruct, Claude, Minimalist) are available through the `format_templates` module and the CLI/orchestrator paths. See [Output formats](#output-formats).
+The Processing tab offers all ten formats. Choosing one also sets Phase 3's **Target AI family**, because Phase 3 renders by that target (earlier builds let the target, default `qwen`, silently override this tab). Choosing a target in the Phase 3 settings updates this tab in return. See [Output formats](#output-formats).
 
 ### Folders, Monitoring and Ten Pillars
 
 - **Folders**: set the input folder and each phase's output folder, with live file counts and sizes (**Refresh Status**, **Open Folder**, **Clean Folder**).
 - **Monitoring**: real-time logs, per-phase results, system status (memory/CPU) and statistics.
-- **Ten Pillars**: status and details for the [data-quality system](#the-ten-pillars-quality-system).
+- **Ten Pillars**: status and details for the [data-quality system](#the-ten-pillars-quality-system). Per-metric scores read "not measured" until items have actually been scored.
+
+<p align="center"><img src="docs/images/gui-pillars.png" alt="Ten Pillars tab" width="55%"></p>
 
 ---
 
@@ -432,10 +434,10 @@ export OPENAI_MODEL="local-model"
 
 An optional layer of data-quality machinery (`ten_pillars_integration.py`, `data_contract.py`, and related modules) with its own GUI tab. Its pillars include a data contract (immutable schema), multi-layer filtering (pre-ingestion, semantic, deduplication, policy), disciplined prompting, uniform formatting, and iterative quality scoring with a minimum threshold.
 
-Please read the following honestly:
+What is and is not there:
 
-- **Eight of the ten pillars are implemented.** The module's docstring says "all 10"; the Ten Pillars tab and status text show "10/10" and "95% accuracy enforced". Treat those labels as aspirational, not as a verified guarantee.
-- The per-metric figures that the tab displays (for example factuality and fluency percentages) are **static display values, not measurements of your data**.
+- **Pillars 1-6 and 8 have working code** (7 of 10). Pillars 7 (continuous governance), 9 (post-fine-tune feedback) and 10 (cultural reinforcement) have no code; 10 is a practice, not software. The app reports "7 of 10" and the compliance report marks those three `not_implemented`.
+- The 95% accuracy figure is a configured **target**, not a verified result. Per-metric scores (factuality, fluency and so on) show "not measured" until items are scored.
 - Use the validation reports and the retrieval benchmark for evidence about your outputs.
 
 ---
@@ -578,7 +580,7 @@ cd backup_cleanup/python_files
 venv/bin/python -m pytest ../test_files -q
 ```
 
-The suite currently has **95 passing tests and 0 failing**. Coverage highlights:
+The suite currently has **97 passing tests and 0 failing**. Coverage highlights:
 
 | Test file | Covers |
 |-----------|--------|
@@ -586,7 +588,7 @@ The suite currently has **95 passing tests and 0 failing**. Coverage highlights:
 | `test_pipeline_integration.py` | The wiring: completeness validation for any numbered document, `evaluate-retrieval --file`, the orchestrator's `structured_chunking` stage on a generated PDF |
 | `test_installers.py` | Windows and Linux installers, including a PowerShell dry run |
 | `test_ios_remote.py` | Auth, lockout, upload/download path safety, job control |
-| `test_phase_settings_gui_path.py` | Saved Phase 2 settings (including the legacy 150-token migration) drive the structure-aware chunker, and Phase 2 writes chunks, report and manifest |
+| `test_phase_settings_gui_path.py` | Saved Phase 2 settings (including the legacy 150-token migration) drive the structure-aware chunker; all ten Phase 3 formats render as themselves; Ten Pillars reporting is not overstated |
 
 ---
 
@@ -616,9 +618,8 @@ Where to look: the **Monitoring** tab for errors, **Security Logs** for sanitiza
 - Heading detection relies on font size/weight and the `Chapter/Step/Part/Module` patterns. PDFs whose headings match body text will give a flat hierarchy.
 - The completeness check covers only numbered units (`Step`, `Chapter`, `Part`, `Module`, digits or words up to twenty). Documents with unnumbered headings get per-chunk checks but no "is anything missing?" check.
 - `--file` benchmark queries come from section titles and vocabulary, so they favour topic-word retrieval. On documents with only a few chunks, completeness saturates at 100% for both systems; noise, context and purity are the informative metrics there.
-- Scanned PDFs need `pytesseract` and the Tesseract binary; without them image-only pages yield no text.
-- The Processing tab exposes six of the ten formats directly.
-- The Ten Pillars tab's headline status text and figures are not measured results (see [above](#the-ten-pillars-quality-system)).
+- Scanned PDFs need the Tesseract binary plus `pytesseract` (now in `requirements.txt`); without them image-only pages yield no text.
+- Pillars 7, 9 and 10 of the Ten Pillars system are not implemented (see [above](#the-ten-pillars-quality-system)).
 - The Windows installer and the iOS remote have not been run on real Windows or iOS hardware.
 
 ---

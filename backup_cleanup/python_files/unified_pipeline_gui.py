@@ -281,7 +281,11 @@ class UnifiedPipelineGUI:
         phase3 = self.pipeline.phases.get("phase3_personality")
         if not phase3:
             return
-        phase3.settings["output_format"] = self.output_format.get().strip() or "qwen"
+        fmt = self.output_format.get().strip() or "qwen"
+        phase3.settings["output_format"] = fmt
+        # Phase 3 renders by training target, so the chosen format must set it too,
+        # otherwise the target (default qwen) silently overrides this tab.
+        phase3.settings["training_target"] = fmt
         if persist:
             self.pipeline.save_configuration()
 
@@ -452,7 +456,7 @@ class UnifiedPipelineGUI:
         if TEN_PILLARS_AVAILABLE:
             pillars_status_label = ttk.Label(
                 stats_frame,
-                text="🏛️ Ten Pillars System: ✅ OPERATIONAL (95% accuracy enforced)",
+                text="🏛️ Ten Pillars: available (optional layer, pillars 1-6 and 8 implemented)",
                 font=("Arial", 9),
                 foreground="green",
             )
@@ -1148,6 +1152,10 @@ Files    Text     Data     Training   Quality
             ("chatml", "CHATML", "<|im_start|> / <|im_end|>"),
             ("llama2", "LLAMA2", "[INST] ... [/INST]"),
             ("gpt_jsonl", "GPT JSONL", "OpenAI chat fine-tuning JSONL"),
+            ("zephyr", "ZEPHYR", "YAML role/content turns"),
+            ("instruct", "INSTRUCT", "Question: / Answer:"),
+            ("claude", "CLAUDE", "Human: / Assistant:"),
+            ("minimalist", "MINIMALIST", "User: / Assistant:"),
         ]
 
         for idx, (value, label, hint) in enumerate(formats):
@@ -1226,7 +1234,11 @@ Files    Text     Data     Training   Quality
             "- ShareGPT: JSON conversation format\n"
             "- ChatML: <|im_start|> / <|im_end|>\n"
             "- Llama2: [INST] / [/INST]\n"
-            '- GPT JSONL: {"messages": [{"role": ...}]}'
+            '- GPT JSONL: {"messages": [{"role": ...}]}\n'
+            "- Zephyr: YAML role/content turns\n"
+            "- Instruct: Question: / Answer:\n"
+            "- Claude: Human: / Assistant:\n"
+            "- Minimalist: User: / Assistant:"
         )
         ttk.Label(
             support_frame, text=formats_text, justify=tk.LEFT, font=("Courier", 10)
@@ -2845,6 +2857,9 @@ Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
                 "claude",
                 "mistral",
                 "gemma",
+                "zephyr",
+                "instruct",
+                "minimalist",
             ],
             state="readonly",
         ).pack(fill=tk.X, pady=2)
@@ -2969,6 +2984,10 @@ Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
                         "combined_jsonl_filename": settings_frame.combined_jsonl_filename_var.get(),
                     }
                 )
+                alias = {"openai": "gpt_jsonl", "mistral": "chatml", "gemma": "alpaca"}
+                target = settings_frame.training_target_var.get()
+                # Keep the Processing tab's selection in step with the target family.
+                self.output_format.set(alias.get(target, target))
             elif phase_name == "phase4_quality":
                 phase_config.settings.update(
                     {
@@ -3583,7 +3602,7 @@ Errors: {len(result.errors)}
             status_text = f"""🏛️ TEN PILLARS SYSTEM STATUS
 {"=" * 50}
 System Status: {dashboard["system_status"].upper()}
-Active Pillars: {dashboard["active_pillars"]}/10
+Implemented Pillars: {dashboard["active_pillars"]} of 10
 Contract Version: {dashboard["contract_version"]}
 Success Rate: {dashboard["success_rate"]:.1f}%
 
@@ -3599,14 +3618,13 @@ Remediated: {dashboard["processing_stats"]["remediated"]}
 ✅ 2. Multi-Layer Filtering - 4-layer validation active
 ✅ 3. Disciplined Prompting - Locked templates with validation
 ✅ 4. Uniform Formatting - Canonical schema with linting
-✅ 5. Iterative Quality Scoring - Automated heuristics with remediation
-✅ 6. Fallback Paths - Remediation queues operational
-✅ 7. Continuous Governance - Real-time monitoring active
-✅ 8. Rigorous Sign-off - Dataset validation enforced
-✅ 9. Post-Fine-tune Feedback - Performance tracking integrated
-✅ 10. Cultural Reinforcement - Quality obsession institutionalized
+✅ 5. Iterative Quality Scoring - Heuristic scoring with remediation
+✅ 6. Fallback Paths - Remediation available
+⬜ 7. Continuous Governance - not implemented
+✅ 8. Rigorous Sign-off - Dataset validation available
+⬜ 9. Post-Fine-tune Feedback - not implemented
+⬜ 10. Cultural Reinforcement - a practice, not software
 
-🎯 ZERO DEFECTS - PRISTINE DATA - TOP-TIER FINE-TUNING READY
 """
 
             self.pillars_status_text.insert(tk.END, status_text)
@@ -3620,13 +3638,13 @@ Remediated: {dashboard["processing_stats"]["remediated"]}
                     text=f"Fields: {len(self.data_contract.required_fields)}"
                 )
 
-            # Update quality metrics (simulated values for display)
+            # Per-metric scores only exist once items have been scored; never invent them.
             if hasattr(self, "quality_metrics_labels"):
                 metrics = {
-                    "Factuality": "97.2%",
-                    "Compliance": "98.5%",
-                    "Completeness": "96.8%",
-                    "Fluency": "95.3%",
+                    "Factuality": "not measured",
+                    "Compliance": "not measured",
+                    "Completeness": "not measured",
+                    "Fluency": "not measured",
                 }
                 for metric, value in metrics.items():
                     if metric in self.quality_metrics_labels:
@@ -3819,7 +3837,7 @@ IMMUTABLE SPECIFICATION - TEAM SIGN-OFF REQUIRED FOR CHANGES
         result = messagebox.askyesno(
             "Ten Pillars Processing",
             "Process files through the complete Ten Pillars system?\n\n"
-            "This will apply all 10 pillars for maximum data quality:\n"
+            "This applies the implemented pillars (1-6 and 8):\n"
             "• Perfect data contract validation\n"
             "• Multi-layer filtering\n"
             "• Disciplined prompting\n"
@@ -3981,7 +3999,8 @@ IMMUTABLE SPECIFICATION - TEAM SIGN-OFF REQUIRED FOR CHANGES
         ttk.Label(format_frame, text="Format:").pack(side=tk.LEFT)
         test_format = ttk.Combobox(
             format_frame,
-            values=["qwen", "alpaca", "chatml", "sharegpt", "llama2", "gpt_jsonl"],
+            values=["qwen", "alpaca", "chatml", "sharegpt", "llama2", "gpt_jsonl",
+                    "zephyr", "instruct", "claude", "minimalist"],
         )
         test_format.set("qwen")
         test_format.pack(side=tk.LEFT, padx=10)
@@ -4103,7 +4122,7 @@ IMMUTABLE SPECIFICATION - TEAM SIGN-OFF REQUIRED FOR CHANGES
         results_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
     def generate_compliance_report(self):
-        """Generate comprehensive compliance report for all 10 pillars."""
+        """Report which pillars have working code."""
         if not TEN_PILLARS_AVAILABLE or not self.ten_pillars_system:
             messagebox.showerror("Error", "Ten Pillars system not available")
             return
@@ -4187,27 +4206,12 @@ Overall Compliance Score: {compliance_report["compliance_score"]:.1f}%
 System Status: {system_health.get("system_status", "unknown").upper()}
 Success Rate: {system_health.get("success_rate", 0):.1f}%
 Total Processed: {system_health.get("processing_stats", {}).get("total_processed", 0)}
-Active Pillars: {system_health.get("active_pillars", 0)}/10
+Implemented Pillars: {system_health.get("active_pillars", 0)} of 10
 
-🎯 QUALITY ASSURANCE:
-✅ 95% minimum accuracy enforced
-✅ Multi-layer validation active
-✅ Complete audit trail maintained
-✅ Real-time monitoring operational
-✅ Compliance reporting automated
-
-🏆 CERTIFICATION:
-This system has been verified to implement all 10 instructional pillars
-for perfect data quality. Every byte emerging from the pipeline is:
-
-✅ AUDIT-READY with complete traceability
-✅ CONTRACT-PERFECT with immutable specifications
-✅ FIT FOR TOP-TIER FINE-TUNING with 95%+ accuracy
-✅ ZERO SURPRISES with comprehensive validation
-✅ NO WASTE with efficient processing
-✅ ONLY PRISTINE DATA with quality obsession
-
-🫂 MISSION ACCOMPLISHED - ZERO DEFECTS ACHIEVED!
+🎯 WHAT THIS REPORT IS:
+Pillars 1-6 and 8 have working code; 7, 9 and 10 do not.
+Figures above come from items actually processed in this session.
+A 95% accuracy target is configured, but it is a target, not a verified result.
 """
 
             report_text.insert(tk.END, report_content)
@@ -4239,15 +4243,10 @@ for perfect data quality. Every byte emerging from the pipeline is:
             )
             self.pillars_results_text.insert(
                 tk.END,
-                f"Compliance Score: {compliance_report['compliance_score']:.1f}%\n",
+                f"Pillars with working code: {compliance_report['compliance_score']:.0f}% (7 of 10)\n",
             )
             self.pillars_results_text.insert(
-                tk.END, f"All 10 Pillars: ✅ OPERATIONAL\n\n"
-            )
-            self.pillars_results_text.insert(tk.END, "🎉 ZERO DEFECTS ACHIEVED!\n")
-            self.pillars_results_text.insert(
-                tk.END,
-                "🫂 Every byte is audit-ready, contract-perfect, and fit for top-tier fine-tuning!",
+                tk.END, "Pillars 7, 9 and 10 are not implemented.\n\n"
             )
 
         except Exception as e:

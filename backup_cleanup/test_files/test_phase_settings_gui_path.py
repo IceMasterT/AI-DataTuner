@@ -75,3 +75,41 @@ class TestPhase2RunsStructured(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestPhase3Formats(unittest.TestCase):
+    """Every format offered in the Processing tab must be written as itself, not as qwen."""
+
+    MARKERS = {
+        "qwen": "<|user|>", "alpaca": "### Instruction:", "chatml": "<|im_start|>",
+        "sharegpt": '"from"', "llama2": "[INST]", "gpt_jsonl": '"messages"',
+        "zephyr": "- role: user", "instruct": "Question:", "claude": "Human:",
+        "minimalist": "User:",
+    }
+
+    def test_all_ten_formats_render_distinctly(self):
+        import datetime
+        from phase_controlled_pipeline import PhaseResult
+        for fmt, marker in self.MARKERS.items():
+            with self.subTest(fmt=fmt), tempfile.TemporaryDirectory() as t:
+                t = Path(t)
+                (t / "in").mkdir()
+                (t / "in" / "a.txt").write_text("Body text.", encoding="utf-8")
+                p = PhaseControlledPipeline(str(t / "c.json"))
+                c = p.phases["phase3_personality"]
+                c.input_folder, c.output_folder = str(t / "in"), str(t / "out")
+                c.settings.update(training_target=fmt, output_format=fmt, emit_combined_jsonl=False)
+                r = p._execute_phase3(c, PhaseResult(phase_name="p3", status=PhaseStatus.ENABLED,
+                                                     start_time=datetime.datetime.now()))
+                self.assertEqual(r.files_failed, 0, r.errors)
+                out = next((t / "out").rglob("a.*")).read_text(encoding="utf-8")
+                self.assertIn(marker, out)
+                if fmt != "qwen":
+                    self.assertNotIn("<|user|>", out)
+
+
+class TestPillarsReporting(unittest.TestCase):
+
+    def test_implemented_count_is_not_overstated(self):
+        from ten_pillars_integration import TenPillarsIntegration
+        self.assertEqual(len(TenPillarsIntegration.IMPLEMENTED_PILLARS), 7)

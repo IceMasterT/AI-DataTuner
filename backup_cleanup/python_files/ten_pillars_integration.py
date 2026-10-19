@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Ten Pillars Integration System - Complete implementation of all 10 instructional pillars.
+Ten Pillars Integration System - implements pillars 1-6 and 8 of the 10 instructional pillars.
 Ensures every byte emerging from the pipeline is audit-ready, contract-perfect, and fit for fine-tuning.
 """
 
@@ -51,12 +51,15 @@ class TenPillarsIntegration:
     3. Disciplined Prompting
     4. Uniform Formatting
     5. Iterative Quality Scoring
-    6. Fallback Paths (implemented)
-    7. Continuous Governance (implemented)
-    8. Rigorous Sign-off (implemented)
-    9. Post-Fine-tune Feedback (implemented)
-    10. Cultural Reinforcement (implemented)
+    6. Fallback Paths (_apply_fallback_remediation)
+    7. Continuous Governance (no code yet)
+    8. Rigorous Sign-off (validate_dataset_for_finetuning)
+    9. Post-Fine-tune Feedback (no code yet)
+    10. Cultural Reinforcement (no code yet; a practice, not software)
     """
+
+    # Pillars that have working code behind them (see class docstring).
+    IMPLEMENTED_PILLARS = (1, 2, 3, 4, 5, 6, 8)
 
     def __init__(self):
         self.logger = logging.getLogger(__name__)
@@ -578,7 +581,7 @@ class TenPillarsIntegration:
             else 0.0,
             "quality_system_health": self.quality_system.get_system_health(),
             "contract_version": self.data_contract.version.value,
-            "active_pillars": 10,
+            "active_pillars": len(self.IMPLEMENTED_PILLARS),
             "dashboard_timestamp": datetime.now().isoformat(),
         }
 
@@ -655,7 +658,7 @@ class TenPillarsIntegration:
         return validation_result
 
     def generate_compliance_report(self) -> Dict[str, Any]:
-        """Generate comprehensive compliance report for all 10 pillars."""
+        """Report which pillars have working code. Statuses are not runtime measurements."""
         return {
             "report_timestamp": datetime.now().isoformat(),
             "pillar_compliance": {
@@ -686,13 +689,13 @@ class TenPillarsIntegration:
                     "remediation_queue": "operational",
                 },
                 "6_fallback_paths": {"status": "implemented"},
-                "7_continuous_governance": {"status": "active"},
-                "8_rigorous_signoff": {"status": "enforced"},
-                "9_post_finetune_feedback": {"status": "implemented"},
-                "10_cultural_reinforcement": {"status": "institutionalized"},
+                "7_continuous_governance": {"status": "not_implemented"},
+                "8_rigorous_signoff": {"status": "implemented"},
+                "9_post_finetune_feedback": {"status": "not_implemented"},
+                "10_cultural_reinforcement": {"status": "not_implemented"},
             },
             "system_health": self.get_system_dashboard(),
-            "compliance_score": 100.0,  # All pillars implemented
+            "compliance_score": len(self.IMPLEMENTED_PILLARS) * 10.0,  # share of pillars with code
         }
 
 
@@ -707,7 +710,7 @@ if __name__ == "__main__":
 
     print("🏛️ TEN PILLARS INTEGRATION SYSTEM")
     print("=" * 60)
-    print("Complete implementation of all 10 instructional pillars")
+    print("Implements pillars 1-6 and 8 of the 10 instructional pillars")
     print(
         "Every byte emerging is audit-ready, contract-perfect, and fit for fine-tuning"
     )
